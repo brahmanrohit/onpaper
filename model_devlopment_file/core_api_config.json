@@ -1,0 +1,28 @@
+{
+  "core_api_key": "CdK3ni67yNuP4SobFYmJArszZe2Hp8a5",
+  "setup_date": "2025-01-31T12:00:00",
+  "topics": [
+    "machine learning healthcare",
+    "artificial intelligence education",
+    "data science business",
+    "computer vision applications",
+    "natural language processing",
+    "robotics automation",
+    "cybersecurity threats",
+    "blockchain technology",
+    "internet of things",
+    "quantum computing",
+    "deep learning applications",
+    "neural networks",
+    "computer science education",
+    "software engineering",
+    "database systems",
+    "cloud computing",
+    "mobile computing",
+    "web technologies",
+    "human computer interaction",
+    "information systems"
+  ],
+  "papers_per_topic": 25,
+  "target_accuracy": 0.90
+} 
