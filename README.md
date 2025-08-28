@@ -27,7 +27,16 @@ source venv/bin/activate  # On Windows use: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 4. Run the Application
+### 4. Environment Setup (Optional)
+Create a `.env` file in the project root for enhanced features:
+
+```bash
+# Google API Key for Gemini AI (Grammar checking, content generation)
+# Get free API key from: https://makersuite.google.com/app/apikey
+GOOGLE_API_KEY=your_google_api_key_here
+```
+
+### 5. Run the Application
 ```bash
 # Option 1: Using the entry point script (recommended)
 python run.py
@@ -61,7 +70,7 @@ onpaperfixed/
 - **Content Generation**: Generate sections like Abstract, Introduction, Literature Review, and Methodology, or a full paper, tailored to the predicted or selected type.
 - **Paper Analysis**: Extract text from PDFs.
 - **Citation Assistant**: Get citation recommendations in APA, IEEE, or MLA format.
-- **Grammar Check**: Detect and correct grammatical errors.
+- **Grammar Check**: Detect and correct grammatical errors with detailed change tracking and side-by-side comparison.
 - **Plagiarism Detection**: Check for plagiarism using AI-based detection.
 
 ## Research Paper Types
@@ -135,6 +144,37 @@ OnPaper supports 10 main research paper types, each with customized structures:
 | Discussion | 600-800 words | 400-600 words |
 | Conclusion | 300-500 words | 200-400 words |
 | Total | ~3,500-5,000 words | ~2,000-3,000 words |
+
+## Grammar Check
+
+### Features
+- **Gemini AI Integration**: Advanced grammar and spell checking using Google's AI
+- **Fallback Mode**: Basic corrections when API is unavailable
+- **Detailed Change Tracking**: See exactly what was changed and why
+- **Side-by-Side Comparison**: View original vs corrected text
+- **Error Statistics**: Breakdown by grammar, spelling, and style errors
+- **Context Display**: See the context around each correction
+- **Severity Levels**: Color-coded error severity (error, warning, info)
+
+### Setup
+1. Get a free API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Add to your `.env` file:
+   ```
+   GOOGLE_API_KEY=your_api_key_here
+   ```
+
+### Usage
+1. Go to "Grammar Check" in the sidebar
+2. Paste your text in the text area
+3. Click "Check Grammar" to get corrections
+4. Click "Show Changes" to see detailed corrections
+5. Download the corrected text
+
+### What It Checks
+- **Grammar**: Subject-verb agreement, sentence structure, etc.
+- **Spelling**: Misspelled words and typos
+- **Style**: Writing style improvements
+- **Punctuation**: Comma usage, apostrophes, etc.
 
 ## Plagiarism Detection
 

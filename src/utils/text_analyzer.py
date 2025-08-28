@@ -126,6 +126,10 @@ class PlagiarismDetector:
                 'message': 'No valid sentences found in the input text.'
             }
         
+        # Ensure vectorizer is available (in case model was loaded without fitting in this session)
+        if self.vectorizer is None:
+            self._update_model()
+        
         # Vectorize input text
         input_vector = self.vectorizer.transform([processed_text])
         
@@ -133,14 +137,24 @@ class PlagiarismDetector:
         similarities = []
         similar_sentences = []
         
-        for ref_doc in self.reference_documents:
-            ref_vector = self.vectorizer.transform([ref_doc['text']])
+        for idx, ref_doc in enumerate(self.reference_documents):
+            # Support both dict-style and plain string reference documents
+            if isinstance(ref_doc, dict):
+                ref_text = ref_doc.get('text', '')
+                ref_id = ref_doc.get('id', f"doc_{idx}")
+                ref_sentences = ref_doc.get('sentences', self.extract_sentences(ref_text))
+            else:
+                ref_text = str(ref_doc)
+                ref_id = f"doc_{idx}"
+                ref_sentences = self.extract_sentences(ref_text)
+
+            ref_vector = self.vectorizer.transform([ref_text])
             similarity = cosine_similarity(input_vector, ref_vector)[0][0]
             similarities.append(similarity)
             
             # Check sentence-level similarities
             for i, input_sent in enumerate(input_sentences):
-                for j, ref_sent in enumerate(ref_doc['sentences']):
+                for j, ref_sent in enumerate(ref_sentences):
                     if len(input_sent) > 20 and len(ref_sent) > 20:  # Only compare substantial sentences
                         sent_similarity = self._calculate_sentence_similarity(input_sent, ref_sent)
                         if sent_similarity > threshold:
@@ -148,7 +162,7 @@ class PlagiarismDetector:
                                 'input_sentence': input_sent,
                                 'reference_sentence': ref_sent,
                                 'similarity': sent_similarity,
-                                'reference_doc': ref_doc['id']
+                                'reference_doc': ref_id
                             })
         
         # Calculate overall plagiarism score

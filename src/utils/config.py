@@ -41,5 +41,7 @@ PAPER_TYPES = {
 # Citation styles
 CITATION_STYLES = ["APA", "IEEE", "MLA"]
 
+# Grammar checking uses Gemini AI API (GOOGLE_API_KEY)
+
 # File upload settings
 ALLOWED_FILE_TYPES = ["pdf", "txt"]
