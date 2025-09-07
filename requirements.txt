@@ -64,12 +64,5 @@ typing_extensions==4.12.2
 tzdata==2025.1
 urllib3==2.3.0
 watchdog==6.0.0
-streamlit
-nltk
-PyPDF2
-scikit-learn
-numpy
-python-dotenv
-google-generativeai
 python-docx
 matplotlib
