@@ -1,0 +1,45 @@
+{
+  "test_cases": [
+    {
+      "original_paper_id": 0,
+      "original_text": "Title: Machine Learning Applications in Healthcare: A Comprehensive Review Abstract: This paper presents a systematic review of machine learning applications in healthcare, focusing on recent developments in diagnostic systems, treatment planning, and patient outcome prediction. We analyze 150 studies published between 2018-2023, examining the effectiveness of various ML algorithms in clinical settings. Our findings demonstrate significant improvements in diagnostic accuracy, with deep learning ",
+      "test_text": "Title: Machine Learning Applications in Healthcare: A Comprehensive Review Abstract: This paper presents a systematic review of machine learning applications in healthcare, focusing on recent developments in diagnostic systems, treatment planning, and patient outcome prediction. We analyze 150 studies published between 2018-2023, examining the effectiveness of various ML algorithms in clinical settings. Our findings demonstrate significant improvements in diagnostic accuracy, with deep learning ",
+      "variation_type": "exact_copy",
+      "expected_similarity": 1.0,
+      "expected_category": "high"
+    },
+    {
+      "original_paper_id": 0,
+      "original_text": "Title: Machine Learning Applications in Healthcare: A Comprehensive Review Abstract: This paper presents a systematic review of machine learning applications in healthcare, focusing on recent developments in diagnostic systems, treatment planning, and patient outcome prediction. We analyze 150 studies published between 2018-2023, examining the effectiveness of various ML algorithms in clinical settings. Our findings demonstrate significant improvements in diagnostic accuracy, with deep learning ",
+      "test_text": "Title: Machine Learning Applications in Healthcare: A Comprehensive Review Abstract: This paper presents a systematic review of machine learning applications in healthcare, focusing on recent developments in diagnostic systems, treatment planning, and patient outcome prediction. We analyze 150 studies published between 2018-2023, examining the effectiveness of various ML algorithms in clinical settings. Our findings demonstrate significant improvements in diagnostic accuracy, with deep learning ",
+      "variation_type": "paraphrased",
+      "expected_similarity": 0.7,
+      "expected_category": "medium"
+    },
+    {
+      "original_paper_id": 0,
+      "original_text": "Title: Machine Learning Applications in Healthcare: A Comprehensive Review Abstract: This paper presents a systematic review of machine learning applications in healthcare, focusing on recent developments in diagnostic systems, treatment planning, and patient outcome prediction. We analyze 150 studies published between 2018-2023, examining the effectiveness of various ML algorithms in clinical settings. Our findings demonstrate significant improvements in diagnostic accuracy, with deep learning ",
+      "test_text": "This study examines clinical outcomes and patient responses in medical treatment protocols.",
+      "variation_type": "similar_topic",
+      "expected_similarity": 0.4,
+      "expected_category": "low"
+    },
+    {
+      "original_paper_id": 0,
+      "original_text": "Title: Machine Learning Applications in Healthcare: A Comprehensive Review Abstract: This paper presents a systematic review of machine learning applications in healthcare, focusing on recent developments in diagnostic systems, treatment planning, and patient outcome prediction. We analyze 150 studies published between 2018-2023, examining the effectiveness of various ML algorithms in clinical settings. Our findings demonstrate significant improvements in diagnostic accuracy, with deep learning ",
+      "test_text": "Sports performance is affected by various factors including training, nutrition, and psychological preparation.",
+      "variation_type": "different_topic",
+      "expected_similarity": 0.1,
+      "expected_category": "none"
+    }
+  ],
+  "statistics": {
+    "total_cases": 4,
+    "case_types": {
+      "exact_copy": 1,
+      "paraphrased": 1,
+      "similar_topic": 1,
+      "different_topic": 1
+    }
+  }
+}

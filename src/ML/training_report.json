@@ -1,0 +1,35 @@
+{
+  "training_date": "2025-07-01T10:46:00.991985",
+  "total_papers": 93,
+  "paper_type_results": {
+    "accuracy": 0.5789473684210527,
+    "cv_mean": 0.3013413506012951,
+    "cv_std": 0.02474560592044403,
+    "model_path": "ML/enhanced_paper_type_classifier.pkl",
+    "vectorizer_path": "ML/enhanced_paper_type_vectorizer.pkl"
+  },
+  "plagiarism_results": {
+    "reference_docs": 93,
+    "features": 8000,
+    "model_path": "ML/enhanced_plagiarism_model.pkl"
+  },
+  "statistics": {
+    "total_papers": 93,
+    "paper_types": {
+      "technical": 15,
+      "analytical": 18,
+      "methodological": 18,
+      "empirical": 6,
+      "comparative": 5,
+      "theoretical": 17,
+      "review": 14
+    },
+    "fields": {
+      "computer_science": 58,
+      "medicine": 25,
+      "social_sciences": 7,
+      "business": 3
+    },
+    "collection_date": "2025-07-01T10:46:00.301423"
+  }
+}
