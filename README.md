@@ -1,5 +1,7 @@
 # OnPaper - Research Paper Writing Assistant
 
+
+
 ## Table of Contents
 1. [Setup Instructions](#setup-instructions)
 2. [Features](#features)
@@ -272,5 +274,6 @@ print(f"Plagiarism Score: {result['plagiarism_score']}%")
 3. This will update `topic_type_classifier.pkl` and `topic_type_vectorizer.pkl`
 
 Enjoy writing research papers with AI assistance! 🚀
-#   o n p a p e r  
+#   o n p a p e r 
+ 
  
