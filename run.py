@@ -10,7 +10,7 @@ import subprocess
 
 def main():
     """Run the Streamlit application."""
-    # Get the directory where this script is located
+    
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
     # Change to the main directory where main.py is located
