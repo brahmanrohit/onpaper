@@ -53,20 +53,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Streamlit Cloud secrets bridge (runs AFTER set_page_config) --------------
-# On Streamlit Community Cloud there is no .env; keys live in st.secrets. Mirror
-# them into the environment so the os.getenv-based AI gateway (GROQ_API_KEY,
-# AI_BACKEND, ...) works there unchanged. Locally (no secrets.toml) this is a
-# harmless no-op; the missing-secrets log is silenced. setdefault means a real
-# .env / env var still wins.
-import logging as _logging
-_logging.getLogger("streamlit.runtime.secrets").setLevel(_logging.ERROR)
-try:
-    for _k, _v in st.secrets.items():
-        if isinstance(_v, str):
-            os.environ.setdefault(_k, _v)
-except Exception:
-    pass
+# Secrets note: on Streamlit Community Cloud, top-level entries in the app's
+# Secrets are exported to os.environ automatically, so the os.getenv-based AI
+# gateway picks up GROQ_API_KEY / AI_BACKEND with no extra code. Locally those
+# values come from .env (python-dotenv). No st.secrets access here on purpose,
+# so a missing local secrets.toml never raises a "No secrets found" error.
 
 # Load the topic->type classifier once and reuse it across reruns.
 @st.cache_resource
