@@ -62,8 +62,9 @@ urllib3==2.3.0
 watchdog==6.0.0
 python-docx
 matplotlib
-# ZeroGPT perplexity-based AI detector (optional feature).
-# For CPU-only torch: pip install torch --index-url https://download.pytorch.org/whl/cpu
-# Pinned to a verified-compatible range for reproducibility (transformers 5.x is a breaking major).
-torch>=2.6
-transformers>=4.44,<6
+# NOTE: torch + transformers are intentionally NOT listed here. They are heavy
+# (large download, can exceed the Streamlit Community Cloud free-tier memory) and
+# are only used by two optional features (the perplexity-based AI detector and
+# dense-embedding semantic chat), both of which import them lazily and fall back
+# gracefully when absent. To enable those features in a local/larger environment:
+#   pip install "torch>=2.6" "transformers>=4.44,<6"   # CPU-only torch index for smaller install
