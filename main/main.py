@@ -7,18 +7,6 @@ import html as _html
 # Add the project root to Python path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-# --- Streamlit Cloud secrets bridge -------------------------------------------
-# Locally the app reads keys from .env (python-dotenv). On Streamlit Community
-# Cloud there is no .env file; secrets live in st.secrets. Mirror them into the
-# environment so the os.getenv-based AI gateway (GROQ_API_KEY, AI_BACKEND, ...)
-# works unchanged in both places. setdefault means a real .env / env var wins.
-try:
-    for _k, _v in st.secrets.items():
-        if isinstance(_v, str):
-            os.environ.setdefault(_k, _v)
-except Exception:
-    pass
-
 from src.utils.pdf_processor import extract_text_from_pdf, summarize_text
 from src.utils.text_analyzer import check_plagiarism, build_custom_detector
 from src.utils.citation_manager import suggest_citations, format_citation
@@ -58,12 +46,27 @@ try:
 except LookupError:
     nltk.download('punkt')
 
-# Set page config
+# Set page config (MUST be the first Streamlit command).
 st.set_page_config(
     page_title="Research Paper Assistant",
     page_icon="📚",
     layout="wide"
 )
+
+# --- Streamlit Cloud secrets bridge (runs AFTER set_page_config) --------------
+# On Streamlit Community Cloud there is no .env; keys live in st.secrets. Mirror
+# them into the environment so the os.getenv-based AI gateway (GROQ_API_KEY,
+# AI_BACKEND, ...) works there unchanged. Locally (no secrets.toml) this is a
+# harmless no-op; the missing-secrets log is silenced. setdefault means a real
+# .env / env var still wins.
+import logging as _logging
+_logging.getLogger("streamlit.runtime.secrets").setLevel(_logging.ERROR)
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+except Exception:
+    pass
 
 # Load the topic->type classifier once and reuse it across reruns.
 @st.cache_resource
