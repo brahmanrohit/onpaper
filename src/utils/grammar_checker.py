@@ -1,6 +1,5 @@
-import os
 import json
-from typing import Dict, List, Tuple
+from typing import Dict
 import re
 from .gemini_helper import generate_text
 
@@ -112,36 +111,11 @@ Focus on:
             if not isinstance(result, dict):
                 return self._fallback_check(original_text, "Invalid response format")
             
-            # Ensure required fields exist
+            # Normalize: recompute stats from normalized changes so every key the
+            # UI reads always exists, regardless of what (if anything) the model sent.
             corrected_text = result.get('corrected_text', original_text)
             changes = result.get('changes', [])
-            statistics = result.get('statistics', {
-                'total_errors': len(changes),
-                'grammar_errors': 0,
-                'spelling_errors': 0,
-                'style_errors': 0
-            })
-            
-            # Calculate statistics if not provided
-            if statistics['total_errors'] == 0 and len(changes) > 0:
-                statistics['total_errors'] = len(changes)
-                for change in changes:
-                    change_type = change.get('type', '').lower()
-                    if 'grammar' in change_type:
-                        statistics['grammar_errors'] += 1
-                    elif 'spelling' in change_type:
-                        statistics['spelling_errors'] += 1
-                    elif 'style' in change_type:
-                        statistics['style_errors'] += 1
-                    else:
-                        statistics['grammar_errors'] += 1
-            
-            return {
-                'corrected_text': corrected_text,
-                'changes': changes,
-                'statistics': statistics,
-                'message': self._generate_message(statistics)
-            }
+            return self._finalize(corrected_text, changes, original_text)
             
         except json.JSONDecodeError as e:
             return self._fallback_check(original_text, f"JSON parsing error: {str(e)}")
@@ -161,6 +135,37 @@ Focus on:
         
         return context
     
+    def _normalize_change(self, ch) -> Dict:
+        """Guarantee every key the UI reads exists on a change (fixes KeyError)."""
+        if not isinstance(ch, dict):
+            ch = {}
+        return {
+            'type': str(ch.get('type') or 'Grammar'),
+            'message': str(ch.get('message') or 'Correction applied'),
+            'original': str(ch.get('original') or ''),
+            'corrected': str(ch.get('corrected') or ''),
+            'position': ch.get('position', 0),
+            'context': str(ch.get('context') or ''),
+            'rule_id': str(ch.get('rule_id') or 'ai'),
+            'severity': str(ch.get('severity') or 'info'),
+        }
+
+    def _finalize(self, corrected_text: str, changes, original_text: str = "") -> Dict:
+        """Normalize changes and recompute statistics so the returned dict always
+        has the full {total,grammar,spelling,style} stats and complete change dicts."""
+        norm = [self._normalize_change(c) for c in (changes or [])]
+        spelling = sum(1 for c in norm if 'spelling' in c['type'].lower())
+        style = sum(1 for c in norm if 'style' in c['type'].lower())
+        grammar = len(norm) - spelling - style  # everything else (grammar/punct/caps)
+        stats = {'total_errors': len(norm), 'grammar_errors': grammar,
+                 'spelling_errors': spelling, 'style_errors': style}
+        return {
+            'corrected_text': corrected_text if corrected_text else original_text,
+            'changes': norm,
+            'statistics': stats,
+            'message': self._generate_message(stats),
+        }
+
     def _generate_message(self, statistics: Dict) -> str:
         """Generate a user-friendly message based on statistics"""
         total = statistics['total_errors']
@@ -168,7 +173,7 @@ Focus on:
         if total == 0:
             return "✅ No grammar or spelling errors found!"
         elif total == 1:
-            return f"⚠️ Found 1 error that has been corrected."
+            return "⚠️ Found 1 error that has been corrected."
         else:
             return f"⚠️ Found {total} errors that have been corrected."
     
@@ -185,7 +190,8 @@ Focus on:
             (r'\b(im)\b', 'I\'m', 'Grammar', 'Corrected "im" to "I\'m"'),
             
             # Contraction fixes
-            (r'\b(its)\s+', 'it\'s ', 'Grammar', 'Corrected "its" to "it\'s"'),
+            # ("its"->"it's" intentionally omitted: possessive "its" is valid and
+            #  blindly rewriting it corrupts correct text.)
             (r'\b(youre)\b', 'you\'re', 'Grammar', 'Corrected "youre" to "you\'re"'),
             (r'\b(theyre)\b', 'they\'re', 'Grammar', 'Corrected "theyre" to "they\'re"'),
             (r'\b(weve)\b', 'we\'ve', 'Grammar', 'Corrected "weve" to "we\'ve"'),
@@ -218,8 +224,11 @@ Focus on:
             matches = list(re.finditer(pattern, text, re.IGNORECASE))
             for match in reversed(matches):
                 original = match.group(0)
-                corrected = replacement
-                
+                # Resolve regex backreferences (\1 \2) against the actual match;
+                # using the raw replacement string inserted literal "\1 \2" into
+                # the user's text for the punctuation rules.
+                corrected = match.expand(replacement)
+
                 if original.lower() != corrected.lower():
                     corrected_text = corrected_text[:match.start()] + corrected + corrected_text[match.end():]
                     changes.append({
@@ -232,23 +241,10 @@ Focus on:
                         'rule_id': 'fallback_basic',
                         'severity': 'info'
                     })
-        
-        # Calculate statistics
-        grammar_errors = sum(1 for c in changes if c['type'] == 'Grammar')
-        spelling_errors = sum(1 for c in changes if c['type'] == 'Spelling')
-        style_errors = sum(1 for c in changes if c['type'] == 'Style')
-        
-        return {
-            'corrected_text': corrected_text,
-            'changes': changes,
-            'statistics': {
-                'total_errors': len(changes),
-                'grammar_errors': grammar_errors,
-                'spelling_errors': spelling_errors,
-                'style_errors': style_errors
-            },
-            'message': f'Basic corrections applied using fallback mode. (AI unavailable: {error_msg})'
-        }
+
+        res = self._finalize(corrected_text, changes, text)
+        res['message'] = f'Basic corrections applied using fallback mode. (AI unavailable: {error_msg})'
+        return res
 
 # Global instance
 grammar_checker = GrammarChecker()

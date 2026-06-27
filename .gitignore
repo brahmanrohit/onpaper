@@ -2,6 +2,9 @@
 env/
 .env
 
+# Ignore secrets / API config (contains CORE API key when used locally)
+src/model_devlopment_file/core_api_config.json
+
 # Ignore Python cache files
 __pycache__/
 *.pyc
@@ -13,3 +16,6 @@ __pycache__/
 # Ignore virtual environments
 venv/
 test.py
+
+# Ignore the ResearchClawBench reference clone (1.1GB, not part of the app)
+ResearchClawBench/

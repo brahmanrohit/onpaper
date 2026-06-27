@@ -1,274 +1,300 @@
-# OnPaper - Research Paper Writing Assistant
+# OnPaper — Research Paper Writing Assistant
+
+OnPaper is a **Streamlit** web application that helps users **generate, analyze, and improve academic research papers**. It combines Large Language Models (Google **Gemini** or a local **Ollama** server) with classic scikit-learn ML models for plagiarism detection and paper-type classification.
+
+This is the **single source of truth** for the project. It documents the real, current layout, what every file does, how data flows, how to run it, and the known issues.
+
+---
 
 ## Table of Contents
-1. [Setup Instructions](#setup-instructions)
-2. [Features](#features)
-3. [Research Paper Types](#research-paper-types)
-4. [Perfect Paper Guide](#perfect-paper-guide)
-5. [Plagiarism Detection](#plagiarism-detection)
-6. [Research Improvements](#research-improvements)
+1. [Features](#features)
+2. [Quick Start](#quick-start)
+3. [Project Structure (what every file does)](#project-structure)
+4. [How It Works (data flow)](#how-it-works)
+5. [Configuration](#configuration)
+6. [AI Backends (Gemini & Ollama)](#ai-backends)
+7. [Machine Learning Models](#machine-learning-models)
+8. [Research Paper Types](#research-paper-types)
+9. [Model Tuning Reference](#model-tuning-reference)
+10. [Known Issues & Limitations](#known-issues--limitations)
+11. [Developer Notes](#developer-notes)
 
-## Setup Instructions
+---
 
-### 1. Clone the Repository
+## Features
+
+| Feature | What it does | Powered by |
+|---------|--------------|------------|
+| **Content Generation** | Generate a full paper (Word `.docx`), a quick paper (TXT), a single section, or a section-wise guide. Supports 10 paper types. | Groq/Ollama + templates |
+| **Paper Analysis** | Extract text from an uploaded PDF/TXT and produce a TF-IDF summary. | PyPDF2 + scikit-learn |
+| **Citation Assistant** | Suggest citations and format them in APA / IEEE / MLA. | *(currently mock data)* |
+| **Grammar Check** | Detect & correct grammar/spelling/style with change tracking and a side-by-side diff. | Gemini (with regex fallback) |
+| **Plagiarism Detection** | Compare text against a reference corpus using TF-IDF + cosine similarity, at document and sentence level. | scikit-learn |
+| **Reference Finder** | Find **real** academic papers with DOIs via the free CrossRef API; format in APA/IEEE/MLA. | CrossRef (no key) |
+| **Paraphraser / Rewriter** | Rewrite text to reduce plagiarism, improve clarity, or change tone (7 modes). | Groq/Ollama |
+| **Readability & Quality** | Offline writing analysis: Flesch/Flesch-Kincaid/Gunning Fog, passive voice, long sentences, complex words. | Native (no key) |
+| **Chat with your Paper** | Upload a PDF and ask questions; answers grounded in the document via **hybrid RAG** (semantic MiniLM embeddings + TF-IDF, fused with RRF) with conversation memory. | transformers + scikit-learn + Groq/Ollama |
+| **ZeroGPT — AI vs Human Detector** *(Beta)* | Estimate AI-likelihood by combining a perplexity model (distilGPT-2), an HC3-trained classifier, and style heuristics via noisy-OR. In the sidebar's "Upcoming Features" dropdown. | torch + transformers + scikit-learn |
+
+---
+
+## Quick Start
+
 ```bash
-git clone https://github.com/yourusername/onpaper.git
-cd onpaper
-```
-
-### 2. Create a Virtual Environment
-```bash
+# 1. Create & activate a virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
-```
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # macOS/Linux
 
-### 3. Install Dependencies
-```bash
+# 2. Install dependencies
 pip install -r requirements.txt
-```
 
-### 4. Environment Setup (Optional)
-Create a `.env` file in the project root for enhanced features:
+# 3. (Optional) configure AI — see "AI Backends" below
+#    Create a .env file with GROQ_API_KEY=... and/or run Ollama locally
 
-```bash
-# Google API Key for Gemini AI (Grammar checking, content generation)
-# Get free API key from: https://makersuite.google.com/app/apikey
-GOOGLE_API_KEY=your_google_api_key_here
-```
-
-### 5. Run the Application
-```bash
-# Option 1: Using the entry point script (recommended)
+# 4. Run the app
 python run.py
-
-# Option 2: Direct streamlit run
-cd main
-streamlit run main.py
+#    or:  cd main && streamlit run main.py
 ```
+
+The app opens at **http://localhost:8501**.
+
+> **Note (Windows):** `gemini_helper.py` reconfigures stdout/stderr to UTF-8 on import so console status messages don't crash on cp1252 terminals. No action needed.
+
+---
 
 ## Project Structure
 
-The project has been optimized with a clear, maintainable structure:
+Real, current layout (the older `app/` + `core/` proposal in past docs was **never implemented**).
 
 ```
 onpaperfixed/
-├── app/                          # Main application (main.py)
-├── core/                         # Core functionality
-│   ├── models/                   # ML models
-│   ├── utils/                    # Utility functions
-│   └── config/                   # Configuration
-├── training/                     # Model training scripts
-├── data/                         # Data files
-├── docs/                         # Documentation
-├── tests/                        # Test files
-├── requirements.txt              # Dependencies
-└── run.py                       # Entry point
+├── run.py                      # 🔑 Entry point — launches `streamlit run main/main.py`
+├── requirements.txt            # Python dependencies
+├── README.md                   # This file (the only documentation file)
+├── .env                        # Secrets/config (GIT-IGNORED — see Configuration)
+│
+├── main/                       # 🎨 PRESENTATION LAYER
+│   ├── main.py                 # The entire Streamlit UI: sidebar + 5 features
+│   ├── deploy_plagiarism_model.py  # Standalone helper to deploy a plagiarism model (not used by the app)
+│   ├── plagiarism_model.pkl    # Legacy model copy (not used at runtime)
+│   ├── assets/                 # UI assets (currently empty)
+│   └── .streamlit/config.toml  # Streamlit server/theme config
+│
+├── src/                        # 🔧 LOGIC, SERVICES & MODELS
+│   ├── utils/                  # Core feature modules (imported by main.py)
+│   │   ├── config.py                 # Centralized paths, thresholds, paper types
+│   │   ├── gemini_helper.py          # ⭐ Central AI gateway: routes to Ollama/Gemini
+│   │   ├── ollama_helper.py          # Local Ollama client (auto-discovers server & model)
+│   │   ├── content_generator.py      # 10 paper-type templates; section-by-section generation
+│   │   ├── default_paper_generator.py# Richer generator → builds the Word .docx (+ images)
+│   │   ├── text_analyzer.py          # PlagiarismDetector (TF-IDF + cosine, batched)
+│   │   ├── grammar_checker.py        # Gemini JSON grammar correction + regex fallback
+│   │   ├── citation_manager.py       # Citation suggestions + APA/IEEE/MLA formatting (mock)
+│   │   ├── pdf_processor.py          # PDF text extraction + TF-IDF summarization
+│   │   ├── paper_type_detector.py    # Keyword-based paper-type detection + per-type guidance
+│   │   ├── topic_type_predictor.py   # Loads the pickled topic→type classifier
+│   │   ├── readability_analyzer.py   # Offline readability/quality metrics (Feature)
+│   │   ├── reference_finder.py       # Real references via CrossRef API (Feature)
+│   │   ├── paraphraser.py            # Rewrite/paraphrase via AI gateway (Feature)
+│   │   ├── paper_chat.py             # Hybrid RAG: semantic+lexical retrieval + memory (Feature)
+│   │   ├── embedder.py               # MiniLM sentence embeddings for semantic search
+│   │   ├── ai_detector.py            # ZeroGPT: blends perplexity+ML+heuristic (Feature)
+│   │   ├── perplexity_detector.py    # distilGPT-2 perplexity/burstiness scoring (Feature)
+│   │   └── nlp_utils.py              # Thin legacy wrappers around generate_text()
+│   │
+│   ├── ML/                     # 🤖 Trained model artifacts + one training script
+│   │   ├── train_topic_type_classifier.py   # Trains topic→type RandomForest
+│   │   ├── training_report.json             # Metrics from the last training run
+│   │   ├── enhanced_models_plagiarism.pkl   # ✅ Plagiarism refs+vectorizer (USED)
+│   │   ├── enhanced_models_vectorizer.pkl   # ✅ Shared TF-IDF vectorizer (USED)
+│   │   ├── enhanced_models_paper_type.pkl   # ✅ Paper-type classifier (USED)
+│   │   ├── topic_type_classifier.pkl        # ✅ Topic→type classifier (USED)
+│   │   ├── topic_type_vectorizer.pkl        # ✅ Topic→type vectorizer (USED)
+│   │   └── (enhanced_*/plagiarism_model* )   # Training outputs / legacy copies (not used at runtime)
+│   │
+│   └── model_devlopment_file/  # 🛠️ OFFLINE training & data-collection scripts (not run by the app)
+│       ├── core_api_collector.py / core_api_paper_collector.py / run_core_collection.py
+│       ├── core_api_config.json / setup_core_api_training.py
+│       ├── enhanced_ml_models.py / enhanced_ml_trainer.py / train_with_core_api.py
+│       ├── enhance_plagiarism_from_api.py / process_your_papers.py
+│       └── model_comparison.py / test_ml_models.py
+│
+├── processed_papers/           # 📚 DATA
+│   ├── paper_processing_guide.py
+│   ├── raw_papers/sample_healthcare_paper.txt
+│   └── training_data/
+│       ├── training_dataset.json
+│       ├── plagiarism_test_cases.json
+│       └── core_training/core_dataset.json   # 93 papers used to train the models
+│
+├── scripts/run_app.py          # 🚀 Alternative launcher (same as run.py)
+├── models/                     # Legacy model dir (used only by deploy_plagiarism_model.py)
+└── tests/                      # ✅ test_imports.py, test_app.py (smoke tests)
 ```
 
-## Features
-- **Topic-to-Type Prediction**: Enter any research topic and the app will automatically suggest the most appropriate research paper type (empirical, review, theoretical, etc.) using a trained AI classifier.
-- **Content Generation**: Generate sections like Abstract, Introduction, Literature Review, and Methodology, or a full paper, tailored to the predicted or selected type.
-- **Paper Analysis**: Extract text from PDFs.
-- **Citation Assistant**: Get citation recommendations in APA, IEEE, or MLA format.
-- **Grammar Check**: Detect and correct grammatical errors with detailed change tracking and side-by-side comparison.
-- **Plagiarism Detection**: Check for plagiarism using AI-based detection.
+### The runtime path (what actually executes when you use the app)
+```
+run.py → main/main.py → src/utils/*  → (gemini_helper → ollama_helper / Gemini API)
+                                      → (text_analyzer, content_generator, … load pkls from src/ML/)
+```
+Everything under `src/model_devlopment_file/`, `scripts/`, `tests/`, `main/deploy_plagiarism_model.py`, and the legacy `*.pkl` copies are **not** part of that runtime path.
+
+---
+
+## How It Works
+
+### Content generation
+`main.py` → `generate_default_paper()` / `generate_quick_paper()` / `generate_section_only()`
+→ looks up the paper-type **template** (structure + word limits) in `content_generator.py` /
+`default_paper_generator.py` → builds a prompt per section → calls **`generate_text()`**
+(`gemini_helper.py`) → assembles sections + citations → renders in Streamlit and offers
+a `.docx`/TXT download.
+
+### Plagiarism detection
+`main.py` → `check_plagiarism(text, threshold)` (`text_analyzer.py`):
+1. Preprocess (lowercase, strip punctuation/whitespace).
+2. **Document-level:** one batched TF-IDF transform of the input + all reference docs → `cosine_similarity` matrix → `plagiarism_score = max similarity × 100`.
+3. **Sentence-level:** reference sentences are tokenized **once and cached**; all input and reference sentences are vectorized in a single batched transform and compared via one cosine-similarity matrix; pairs above the threshold are returned.
+
+> This batched design keeps a full-paper check well under a second. (An earlier version did a per-sentence-pair transform loop that took 10s+.)
+
+### Grammar check
+`check_grammar_text()` → builds a JSON-output prompt → Gemini → parse JSON → structured
+`{corrected_text, changes[], statistics}`. If the API is unavailable or returns no JSON,
+a **regex fallback** applies common contraction/spelling/punctuation fixes.
+
+### Topic → paper type
+`TopicTypePredictor` loads `topic_type_classifier.pkl` + `topic_type_vectorizer.pkl` and
+returns `(paper_type, confidence)`. `paper_type_detector.py` provides a complementary
+**keyword-based** detector + per-type writing guidance.
+
+---
+
+## Configuration
+
+All settings live in [src/utils/config.py](src/utils/config.py): model paths, default
+plagiarism threshold (`0.7`), summary length, max file size, the 10 paper types, citation
+styles, and allowed upload types.
+
+### `.env` (git-ignored)
+```bash
+# AI backend: auto (Groq→Ollama), groq, or ollama
+AI_BACKEND=auto
+
+# Groq (primary) — free key at https://console.groq.com/keys
+GROQ_API_KEY=gsk_your_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+
+# Ollama (fallback; local & unlimited; auto-detected if omitted)
+OLLAMA_BASE_URL=http://localhost:11434
+# OLLAMA_MODEL=llama3.2
+```
+
+> **Security:** `.env` is git-ignored and must never be committed. If a key was ever
+> committed, **rotate it** — removing the file does not purge it from git history.
+
+---
+
+## AI Backends
+
+The app uses **open-source models only** (no Gemini / no proprietary cloud). `generate_text(prompt, backend="auto")`
+in [gemini_helper.py](src/utils/gemini_helper.py) is the single entry point used by every
+generation feature. *(The module keeps its legacy `gemini_helper` filename for import
+compatibility, but Gemini has been removed.)*
+
+- **`auto`** *(default)*: try **Groq** first (fast cloud), then fall back to a local **Ollama** server.
+- **`groq`**: cloud, OpenAI-compatible, **fast + generous free tier**, runs open-source Llama models.
+  Get a free key at https://console.groq.com/keys (starts with `gsk_`); set `GROQ_API_KEY` and
+  optionally `GROQ_MODEL` (default `llama-3.3-70b-versatile`). Implemented in
+  [groq_helper.py](src/utils/groq_helper.py) using `requests` — no extra dependency.
+- **`ollama`**: fully **local, open-source, unlimited & offline**. Install from https://ollama.com,
+  run `ollama pull llama3.2`; `ollama_helper.py` auto-discovers the server URL and picks a
+  preferred model (`llama3.2`, `llama3.1`, `mistral`, …) or the first installed model.
+
+If a backend fails in `auto` mode, the **real error** is surfaced (e.g. a Groq `401`/`429`)
+instead of a generic "not available" message.
+
+---
+
+## Machine Learning Models
+
+| Model file (`src/ML/`) | Type | Used by | Purpose |
+|------------------------|------|---------|---------|
+| `enhanced_models_plagiarism.pkl` | dict: vectorizer + 93 reference docs | `text_analyzer.py` | Plagiarism reference corpus |
+| `enhanced_models_vectorizer.pkl` | TfidfVectorizer | config | Shared TF-IDF vectorizer |
+| `enhanced_models_paper_type.pkl` | CalibratedClassifierCV | `paper_type_detector.py` | Paper-type classification |
+| `topic_type_classifier.pkl` | RandomForestClassifier | `topic_type_predictor.py` | Topic → paper type |
+| `topic_type_vectorizer.pkl` | TfidfVectorizer | `topic_type_predictor.py` | Topic features |
+
+**Training data:** 93 papers (`processed_papers/training_data/core_training/core_dataset.json`),
+spanning computer_science (58), medicine (25), social_sciences (7), business (3).
+Last run (`training_report.json`): paper-type accuracy ≈ 58%.
+
+Retrain the topic→type model:
+```bash
+python src/ML/train_topic_type_classifier.py
+```
+The broader model pipeline lives in `src/model_devlopment_file/` (CORE API collection +
+enhanced trainers) and is **offline only**.
+
+---
 
 ## Research Paper Types
 
-OnPaper supports 10 main research paper types, each with customized structures:
+10 supported types, each with a customized section structure and word limits
+(see `content_generator.py`):
 
-1. **Empirical Research Paper**
-   - Focus: Data analysis, statistics, empirical findings
-   - Best for: Original research with data collection
+`empirical`, `theoretical`, `review`, `comparative`, `case_study`, `analytical`,
+`methodological`, `position`, `technical`, `interdisciplinary`.
 
-2. **Theoretical Research Paper**
-   - Focus: Theoretical concepts, frameworks
-   - Best for: Developing new theories
+### Perfect-paper section guideline
+| Section | Standard | Simple |
+|---------|----------|--------|
+| Abstract | 150–250 | 150–200 |
+| Introduction | 500–800 | 400–600 |
+| Literature Review | 800–1200 | — |
+| Methodology | 400–600 | 300–500 |
+| Results | 400–600 | 300–500 |
+| Discussion | 600–800 | 400–600 |
+| Conclusion | 300–500 | 200–400 |
+| **Total** | ~3,500–5,000 | ~2,000–3,000 |
 
-3. **Review Paper**
-   - Focus: Past studies, research gaps
-   - Best for: Literature reviews and gap analysis
+---
 
-4. **Comparative Research Paper**
-   - Focus: Comparison between subjects
-   - Best for: Comparing approaches/methods
+## Model Tuning Reference
 
-5. **Case Study**
-   - Focus: Deep dive on specific subject
-   - Best for: In-depth analysis of cases
+**Plagiarism (TF-IDF):** `max_features=5000`, `ngram_range=(1,2)`, `min_df`/`max_df` tuned per
+corpus. Score bands: `<30` low, `30–60` moderate, `60–threshold` high, `>threshold` plagiarism risk.
 
-6. **Analytical Research Paper**
-   - Focus: Critical analysis, logical reasoning
-   - Best for: Critical examination of topics
+**Paper-type / topic classifier (RandomForest):** `n_estimators=100`, `random_state=42`,
+TF-IDF features (3000–8000), `stop_words='english'`.
 
-7. **Methodological Research Paper**
-   - Focus: Method development, validation
-   - Best for: New research methods
+**Maintenance:** retrain when the reference corpus grows; expand the dataset to improve the
+(currently modest) paper-type accuracy; consider semantic embeddings for plagiarism instead
+of pure TF-IDF.
 
-8. **Position Paper**
-   - Focus: Clear position, arguments
-   - Best for: Taking stances on issues
+---
 
-9. **Technical Report**
-   - Focus: Technical details, implementation
-   - Best for: Technical projects
+## Known Issues & Limitations
 
-10. **Interdisciplinary Research Paper**
-    - Focus: Multiple disciplines, integration
-    - Best for: Cross-disciplinary research
+- **Citations are mock data** — `citation_manager.suggest_citations()` returns random sample
+  papers, not real lookups. Wire it to a real source (CrossRef / Semantic Scholar) for production.
+- **Plagiarism corpus is generic** — the score reflects similarity to the 93 bundled academic
+  papers, not the web. There is no UI to add your own reference documents yet.
+- **No database / no auth / single-user** — state is files + pickles; models load at startup.
+- **`paper_type_detector` uses keyword matching at runtime** — the trained classifier pkl is
+  loaded but `detect_paper_type()` currently returns keyword-based results.
+- **AI features require credentials** — without a valid `GROQ_API_KEY` or a running Ollama,
+  generation/grammar return an actionable error; plagiarism, summary, and type detection work offline.
 
-## Perfect Paper Guide
-
-### The 10 Perfect Research Paper Rules
-
-1. **Title** — Short, clear, keywords (under 15 words)
-2. **Abstract** — Purpose, methods, results, conclusion (150–250 words)
-3. **Introduction** — Topic, question, importance (500-800 words)
-4. **Literature Review** — Past work, gaps (800-1200 words)
-5. **Methodology** — Data collection/analysis (400-600 words)
-6. **Results** — Clear data presentation (400-600 words)
-7. **Discussion** — Interpretation, comparison (600-800 words)
-8. **Conclusion** — Main takeaway, future work (300-500 words)
-9. **References** — 5-8 relevant sources
-10. **General** — Clean language, proper structure
-
-### Word Count Guidelines
-
-| Section | Standard Paper | Simple Paper |
-|---------|----------------|--------------|
-| Abstract | 150-250 words | 150-200 words |
-| Introduction | 500-800 words | 400-600 words |
-| Literature Review | 800-1200 words | - |
-| Methodology | 400-600 words | 300-500 words |
-| Results | 400-600 words | 300-500 words |
-| Discussion | 600-800 words | 400-600 words |
-| Conclusion | 300-500 words | 200-400 words |
-| Total | ~3,500-5,000 words | ~2,000-3,000 words |
-
-## Grammar Check
-
-### Features
-- **Gemini AI Integration**: Advanced grammar and spell checking using Google's AI
-- **Fallback Mode**: Basic corrections when API is unavailable
-- **Detailed Change Tracking**: See exactly what was changed and why
-- **Side-by-Side Comparison**: View original vs corrected text
-- **Error Statistics**: Breakdown by grammar, spelling, and style errors
-- **Context Display**: See the context around each correction
-- **Severity Levels**: Color-coded error severity (error, warning, info)
-
-### Setup
-1. Get a free API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Add to your `.env` file:
-   ```
-   GOOGLE_API_KEY=your_api_key_here
-   ```
-
-### Usage
-1. Go to "Grammar Check" in the sidebar
-2. Paste your text in the text area
-3. Click "Check Grammar" to get corrections
-4. Click "Show Changes" to see detailed corrections
-5. Download the corrected text
-
-### What It Checks
-- **Grammar**: Subject-verb agreement, sentence structure, etc.
-- **Spelling**: Misspelled words and typos
-- **Style**: Writing style improvements
-- **Punctuation**: Comma usage, apostrophes, etc.
-
-## Plagiarism Detection
-
-### Features
-- TF-IDF Vectorization
-- Cosine Similarity Analysis
-- Sentence-Level Detection
-- Model Persistence
-- Configurable Thresholds
-- Reference Document Management
-- Real-time Analysis
-- Web Interface
-
-### Usage
-```python
-from utils.text_analyzer import check_plagiarism, add_reference_document
-
-# Add reference documents
-add_reference_document("Your reference text here", "doc_id")
-
-# Check for plagiarism
-result = check_plagiarism("Text to check for plagiarism")
-print(f"Plagiarism Score: {result['plagiarism_score']}%")
-```
-
-### Threshold Guidelines
-- **0.1-0.3**: Very strict (high false positives)
-- **0.4-0.6**: Moderate (balanced)
-- **0.7-0.8**: Standard (recommended)
-- **0.9-1.0**: Lenient (high false negatives)
-
-## Research Improvements
-
-### Key Improvements Made
-
-1. **Verified Data Sources**
-   - Integration with academic databases
-   - Statistical data sources
-   - Industry reports
-
-2. **Defined Research Periods**
-   - Clear timeframes
-   - Historical context
-   - Future projections
-
-3. **Comprehensive Citations**
-   - 15-20 high-quality sources
-   - Multiple citation styles
-   - Recent and classic papers
-
-4. **Methodology Framework**
-   - Qualitative and quantitative methods
-   - Bias mitigation
-   - Expert opinion integration
-
-5. **Sample Specifications**
-   - Statistical power analysis
-   - Sample size calculations
-   - Representativeness assessment
-
-6. **Ethics Framework**
-   - Informed consent
-   - Data protection
-   - IRB considerations
-   - Conflict of interest disclosure
-
-## 🚀 How to Use
-
-### Option 1: Complete Paper
-1. Go to "Content Generation" → "Complete Paper"
-2. Enter your research topic
-3. Choose paper type (or use AI suggestion)
-4. Enable citations (recommended)
-5. Click "Generate Paper"
-
-### Option 2: Section Generator
-1. Go to "Content Generation" → "Section Generator"
-2. Enter topic and select section
-3. Choose paper type
-4. Click "Generate Section"
-
-### Option 3: Quick Draft
-1. Go to "Content Generation" → "Quick Draft"
-2. Enter topic
-3. Click "Generate Quick Draft"
+---
 
 ## Developer Notes
 
-### Retraining the Topic-to-Type Classifier
-1. Add new papers to your dataset (see `core_api_collector.py`)
-2. Run:
-   ```bash
-   python train_topic_type_classifier.py
-   ```
-3. This will update `topic_type_classifier.pkl` and `topic_type_vectorizer.pkl`
-
-Enjoy writing research papers with AI assistance! 🚀
+- **Entry points:** `run.py` (recommended) or `scripts/run_app.py`. Both `cd` into `main/`
+  and run `streamlit run main.py`.
+- **Smoke tests:** `python tests/test_imports.py` and `python tests/test_app.py`.
+- **Adding a paper type:** add it to `PAPER_TYPES` in `config.py` and to the template dicts in
+  `content_generator.py` / `default_paper_generator.py`.
+- **`__pycache__/` and `.env`** are git-ignored; keep them out of commits.

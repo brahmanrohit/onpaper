@@ -1,42 +1,37 @@
-# import os
-# from dotenv import load_dotenv
-# import google.generativeai as genai
+"""
+Central AI gateway for the Research Paper Assistant.
 
-# # Load environment variables
-# load_dotenv()
+NOTE: the module is still named `gemini_helper` for backward compatibility
+(every feature module imports `generate_text` from here), but Gemini has been
+removed. The app now uses open-source models only:
 
-# # Get API Key from .env file
-# API_KEY = os.getenv("GOOGLE_API_KEY")
+  * Groq   — fast, free cloud (Llama 3.3 70B etc.), the default primary.
+  * Ollama — fully local, open-source, unlimited & offline (fallback).
 
-# if not API_KEY:
-#     raise ValueError("⚠️ Missing GOOGLE_API_KEY in .env file!")
-
-# # Initialize Gemini AI
-# try:
-#     genai.configure(api_key=API_KEY)
-# except Exception as e:
-#     raise RuntimeError(f"Error initializing Gemini AI: {e}")
-
-# def generate_text(prompt):
-#     """Generate text using Google Gemini AI."""
-#     try:
-#         response = genai.generate_text(model="models/gemini-pro", prompt=prompt)
-
-#         return response.text
-#     except Exception as e:
-#         return f"Error generating text: {str(e)}"
-
+`generate_text(prompt, backend="auto")` is the single entry point used by every
+generation feature. In "auto" mode it tries Groq first (fast), then falls back
+to a local Ollama server if one is reachable.
+"""
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
-import google.generativeai as genai
 from .ollama_helper import get_ollama_helper, is_ollama_available
+from .groq_helper import generate_text_with_groq, is_groq_available, get_groq_model
+
+# Make console output robust on Windows terminals (cp1252) so that printing
+# unicode glyphs (e.g. status symbols) never raises UnicodeEncodeError.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 # Load environment variables from multiple possible locations
 def load_env_file():
     """Load .env file from multiple possible locations."""
-    # Get the current file's directory
     current_dir = Path(__file__).parent
     possible_paths = [
         current_dir / '.env',  # In utils directory
@@ -45,50 +40,86 @@ def load_env_file():
         Path.cwd() / '.env',  # In current working directory
         Path.home() / '.env',  # In user home directory
     ]
-    
+
     for env_path in possible_paths:
         if env_path.exists():
             print(f"Loading .env from: {env_path}")
             load_dotenv(env_path, override=True)
             return True
-    
+
     print("Warning: No .env file found in any of the expected locations")
-    print("Expected locations:")
-    for path in possible_paths:
-        print(f"  - {path}")
     return False
+
 
 # Load environment variables
 load_env_file()
 
-# Get API Key from .env file
-API_KEY = os.getenv("GOOGLE_API_KEY")
-
-# Initialize Gemini AI only if API key is available
-model = None
-if API_KEY and API_KEY != "your_api_key_here" and API_KEY.strip():
-    try:
-        genai.configure(api_key=API_KEY)
-        MODEL_NAME = "models/gemini-flash-latest"  # Updated to correct model name
-        model = genai.GenerativeModel(MODEL_NAME)  # Correct AI Studio Model
-        print("✓ Gemini AI initialized successfully!")
-    except Exception as e:
-        print(f"Warning: Error initializing Gemini AI: {e}")
-        model = None
+# Report backend availability at import (informational only).
+if is_groq_available():
+    print(f"Groq backend ready (model: {get_groq_model()}).")
+elif is_ollama_available():
+    print("Ollama backend ready (local).")
 else:
-    print("Warning: GOOGLE_API_KEY not found or is placeholder in .env file. AI features will be limited.")
-    print("To enable AI features, add your Google API key to the .env file:")
-    print("1. Get your API key from: https://makersuite.google.com/app/apikey")
-    print("2. Replace 'your_api_key_here' with your actual API key in the .env file")
+    print("Warning: No AI backend configured. Generation/grammar/paraphrase will be limited.")
+    print("Enable one of:")
+    print("  - Groq (free, fast):   set GROQ_API_KEY in .env  (https://console.groq.com/keys)")
+    print("  - Ollama (local, free): install Ollama and run `ollama pull llama3.2`")
+
+
+def is_unavailable_response(result) -> bool:
+    """True if a generate_text() result is an error / 'backend unavailable' string.
+
+    Centralized here so callers don't each re-implement the same checks.
+    """
+    if not result:
+        return True
+    lowered = str(result).strip().lower()
+    # Match only the specific sentinel messages this gateway / the backends
+    # produce — NOT any prose that happens to start with "Error" or contain
+    # "is not available" (which are valid in real generated/rewritten text).
+    return (
+        lowered.startswith("ai generation failed")
+        or lowered.startswith("ai features are not available")
+        or lowered.startswith("error:")          # groq_helper sentinels all use "Error:"
+        or lowered.startswith("groq error")
+        or lowered.startswith("ollama error")
+        or lowered.startswith("gemini error")
+        or lowered.startswith("backend '")
+        or lowered.startswith("ollama is not available")
+        or lowered.startswith("gemini ai is not available")
+    )
+
 
 def generate_text(prompt, backend="auto"):
-    """Generate text using available AI backend (Gemini or Ollama)."""
-    
+    """Generate text using an available AI backend (Groq or Ollama).
+
+    "auto" tries Groq first (fast cloud), then falls back to a local Ollama
+    server. Set AI_BACKEND in .env, or pass backend="groq"/"ollama" explicitly.
+    """
     # Get backend preference from environment or parameter
     if backend == "auto":
         backend = os.getenv("AI_BACKEND", "auto").lower()
-    
-    # Try Ollama first if available and preferred
+
+    # Track the most recent backend error so 'auto' mode can report the real
+    # cause instead of a generic "not available" message.
+    last_error = None
+
+    # Try Groq first (fast, free cloud) if available and preferred.
+    if backend in ["auto", "groq"] and is_groq_available():
+        try:
+            result = generate_text_with_groq(prompt)
+            if not result.startswith("Error"):
+                return result
+            elif backend == "groq":
+                return result
+            else:
+                last_error = result
+        except Exception as e:
+            if backend == "groq":
+                return f"Groq error: {str(e)}"
+            last_error = f"Groq error: {str(e)}"
+
+    # Fall back to a local Ollama server (unlimited, offline) if reachable.
     if backend in ["auto", "ollama"] and is_ollama_available():
         try:
             ollama_helper = get_ollama_helper()
@@ -97,65 +128,54 @@ def generate_text(prompt, backend="auto"):
                 return result
             elif backend == "ollama":
                 return result
+            else:
+                last_error = result
         except Exception as e:
             if backend == "ollama":
                 return f"Ollama error: {str(e)}"
-    
-    # Fall back to Gemini
-    if backend in ["auto", "gemini"] and model is not None:
-        try:
-            response = model.generate_content(prompt)
-            return response.text if response else "Error: Empty response from Gemini"
-        except Exception as e:
-            if backend == "gemini":
-                return f"Gemini error: {str(e)}"
-    
-    # If we get here, no backend is available
+            last_error = f"Ollama error: {str(e)}"
+
+    # If we get here, no backend produced a result.
+    if last_error:
+        return (
+            "AI generation failed. Please check your GROQ_API_KEY or your Ollama "
+            f"setup. Details: {last_error}"
+        )
     if backend == "auto":
-        return "AI features are not available. Please set up GOOGLE_API_KEY or ensure Ollama is running."
+        return ("AI features are not available. Set GROQ_API_KEY in .env "
+                "(https://console.groq.com/keys) or run a local Ollama server.")
     else:
         return f"Backend '{backend}' is not available. Please check your configuration."
 
-def generate_text_with_gemini(prompt):
-    """Generate text using only Gemini AI."""
-    if model is None:
-        return "Gemini AI is not available. Please set up GOOGLE_API_KEY in .env file."
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text if response else "Error: Empty response from AI"
-    except Exception as e:
-        return f"Error generating text with Gemini: {str(e)}"
 
 def generate_text_with_ollama(prompt):
     """Generate text using only Ollama."""
     if not is_ollama_available():
         return "Ollama is not available. Please ensure Ollama is running."
-    
+
     try:
         ollama_helper = get_ollama_helper()
         return ollama_helper.generate_text(prompt)
     except Exception as e:
         return f"Error generating text with Ollama: {str(e)}"
 
+
 def get_available_backends():
     """Get list of available AI backends."""
     backends = []
-    
+    if is_groq_available():
+        backends.append("groq")
     if is_ollama_available():
         backends.append("ollama")
-    
-    if model is not None:
-        backends.append("gemini")
-    
     return backends
+
 
 def get_backend_status():
     """Get status of all AI backends."""
     status = {
-        "gemini": {
-            "available": model is not None,
-            "model": "models/gemini-flash-latest" if model else None
+        "groq": {
+            "available": is_groq_available(),
+            "model": get_groq_model() if is_groq_available() else None
         },
         "ollama": {
             "available": is_ollama_available(),
@@ -163,4 +183,3 @@ def get_backend_status():
         }
     }
     return status
-

@@ -5,8 +5,6 @@ Provides local AI capabilities using Ollama models.
 
 import os
 import requests
-from pathlib import Path
-from dotenv import load_dotenv
 from typing import Optional, Dict, Any
 
 class OllamaHelper:
@@ -24,13 +22,12 @@ class OllamaHelper:
         if url:
             return url
             
-        # Default URLs to try (in order of preference)
+        # Default URLs to try (in order of preference). For a non-default host,
+        # set OLLAMA_BASE_URL in .env rather than hardcoding an IP here.
         default_urls = [
-            "http://host.docker.internal:11434",  # WSL/Docker bridge
-            "http://localhost:11434",  # Local Windows
+            "http://localhost:11434",  # Local
             "http://127.0.0.1:11434",  # Local alternative
-            "http://192.168.1.100:11434",  # Common LAN IP
-            "http://192.168.20.8:11434",  # Your network IP from earlier
+            "http://host.docker.internal:11434",  # WSL/Docker bridge
         ]
         
         for url in default_urls:

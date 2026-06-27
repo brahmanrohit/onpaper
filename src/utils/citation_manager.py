@@ -1,22 +1,26 @@
-import random
+"""
+Citation Assistant backend.
 
-def suggest_citations(query):
-    """Returns a list of mock research paper citations based on a query."""
-    mock_papers = [
-        {"title": "Deep Learning in Healthcare", "author": "Smith et al.", "year": 2021},
-        {"title": "Blockchain for Data Security", "author": "Doe et al.", "year": 2020},
-        {"title": "Advancements in AI", "author": "Brown et al.", "year": 2022},
-        {"title": "Natural Language Processing Trends", "author": "Clark et al.", "year": 2023},
-        {"title": "Quantum Computing and Cryptography", "author": "Taylor et al.", "year": 2019}
-    ]
-    return random.sample(mock_papers, min(len(mock_papers), 3))  # Return 3 random papers
+Previously this returned hardcoded MOCK papers regardless of the query, which
+is dangerous in a research tool (users could export fabricated references into
+real work). It now delegates to reference_finder, which queries the free
+CrossRef API for REAL papers with DOIs and formats them in APA / IEEE / MLA.
+"""
+
+from .reference_finder import search_references, format_reference
+
+
+def suggest_citations(query, rows: int = 8):
+    """Find real citations for a query via CrossRef.
+
+    Returns a list of normalized reference dicts (title/authors/year/journal/
+    doi/url). Returns an empty list if nothing is found or the service errors,
+    so existing callers that slice/iterate the result keep working.
+    """
+    result = search_references(query, rows=rows)
+    return result.get("references", [])
+
 
 def format_citation(paper, style="APA"):
-    """Formats a citation according to the selected style."""
-    if style == "APA":
-        return f"{paper['author']} ({paper['year']}). {paper['title']}."
-    elif style == "IEEE":
-        return f"[{paper['year']}] {paper['author']}, \"{paper['title']}\"."
-    elif style == "MLA":
-        return f"{paper['author']}. \"{paper['title']}.\" {paper['year']}."
-    return "Invalid citation style."
+    """Format a reference dict (from suggest_citations) in APA / IEEE / MLA."""
+    return format_reference(paper, style=style)

@@ -2,7 +2,6 @@
 Configuration settings for the Research Paper Assistant application.
 """
 
-import os
 from pathlib import Path
 
 # Base directory
@@ -18,6 +17,7 @@ PAPER_TYPE_MODEL_PATH = ML_DIR / 'enhanced_models_paper_type.pkl'
 PAPER_TYPE_VECTORIZER_PATH = ML_DIR / 'enhanced_models_vectorizer.pkl'
 TOPIC_TYPE_MODEL_PATH = ML_DIR / 'topic_type_classifier.pkl'
 TOPIC_TYPE_VECTORIZER_PATH = ML_DIR / 'topic_type_vectorizer.pkl'
+AI_DETECTOR_MODEL_PATH = ML_DIR / 'ai_detector_model.pkl'
 
 # Application settings
 DEFAULT_PLAGIARISM_THRESHOLD = 0.7
@@ -41,7 +41,7 @@ PAPER_TYPES = {
 # Citation styles
 CITATION_STYLES = ["APA", "IEEE", "MLA"]
 
-# Grammar checking uses Gemini AI API (GOOGLE_API_KEY)
+# Grammar checking uses the shared AI gateway (Groq / Ollama)
 
 # File upload settings
 ALLOWED_FILE_TYPES = ["pdf", "txt"]

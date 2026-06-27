@@ -1,14 +1,6 @@
-import re
-import numpy as np
-from typing import Dict, List, Tuple, Any
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score
+from typing import Dict, List, Any
 import pickle
 import os
-from pathlib import Path
-from .gemini_helper import generate_text
 from .config import PAPER_TYPE_MODEL_PATH, PAPER_TYPE_VECTORIZER_PATH
 
 class ResearchPaperTypeDetector:
@@ -182,8 +174,16 @@ def get_type_guidance(paper_type: str) -> Dict[str, Any]:
     return paper_type_detector.get_type_specific_guidance(paper_type)
 
 def train_paper_type_model() -> None:
-    """Train the paper type detection model."""
-    paper_type_detector.train_model()
+    """Train the paper type detection model.
+
+    Training is handled offline by the scripts in
+    ``src/model_devlopment_file`` (see ``enhanced_ml_trainer.py``). The runtime
+    detector uses pre-trained model files and keyword fallback only.
+    """
+    raise NotImplementedError(
+        "Paper-type training is done offline via src/model_devlopment_file/"
+        "enhanced_ml_trainer.py; the runtime detector loads pre-trained models."
+    )
 
 def load_paper_type_model() -> bool:
     """Load the trained paper type detection model."""

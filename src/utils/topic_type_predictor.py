@@ -1,6 +1,4 @@
 import pickle
-import os
-from pathlib import Path
 from .config import TOPIC_TYPE_MODEL_PATH, TOPIC_TYPE_VECTORIZER_PATH
 
 MODEL_PATH = str(TOPIC_TYPE_MODEL_PATH)
@@ -14,7 +12,7 @@ class TopicTypePredictor:
             with open(VECTORIZER_PATH, 'rb') as f:
                 self.vectorizer = pickle.load(f)
         except Exception as e:
-            print(f"Error loading models from {ML_DIR}: {str(e)}")
+            print(f"Error loading topic-type models from {MODEL_PATH} / {VECTORIZER_PATH}: {str(e)}")
             raise
 
     def predict(self, topic: str):

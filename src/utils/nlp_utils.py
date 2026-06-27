@@ -1,8 +1,11 @@
 import nltk
-from nltk.tokenize import word_tokenize
 from .gemini_helper import generate_text  # Use centralized AI helper
 
-nltk.download("punkt")
+# Download the NLTK 'punkt' tokenizer only if it isn't already cached.
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt")
 
 def generate_content(topic):
     """Generates research paper content using Gemini AI."""

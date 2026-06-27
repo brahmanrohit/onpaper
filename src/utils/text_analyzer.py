@@ -1,17 +1,13 @@
 import numpy as np
-import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.pipeline import Pipeline
 import joblib
 import os
-from pathlib import Path
 import re
-from typing import List, Dict, Tuple
+from typing import List, Dict
 import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
+from nltk.tokenize import sent_tokenize
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -46,6 +42,9 @@ class PlagiarismDetector:
         self.vectorizer = None
         self.reference_documents = []
         self.model = None
+        # Cache of (ref_id, sentence) pairs, built once and reused across
+        # check_plagiarism() calls. Invalidated whenever the reference set changes.
+        self._ref_sentences_cache = None
         self.load_model()
         
     def preprocess_text(self, text: str) -> str:
@@ -79,17 +78,18 @@ class PlagiarismDetector:
             'text': processed_text,
             'sentences': self.extract_sentences(text)
         })
+        self._ref_sentences_cache = None  # reference set changed
         self._update_model()
     
     def _update_model(self):
         """Update the TF-IDF model with current reference documents."""
         if not self.reference_documents:
             return
-        # Support both list of dicts and list of strings
-        if isinstance(self.reference_documents[0], dict):
-            all_texts = [doc['text'] for doc in self.reference_documents]
-        else:
-            all_texts = self.reference_documents
+        # Extract text per item so a MIX of dict refs (user uploads) and plain
+        # string refs (the bundled corpus) is handled — checking only [0] broke
+        # when the bundled strings were combined with an added dict.
+        all_texts = [(doc['text'] if isinstance(doc, dict) else str(doc))
+                     for doc in self.reference_documents]
         # Fit the vectorizer
         self.vectorizer = TfidfVectorizer(
             max_features=5000,
@@ -116,8 +116,15 @@ class PlagiarismDetector:
             }
         
         processed_text = self.preprocess_text(text)
-        input_sentences = self.extract_sentences(text)
-        
+        # Keep the ORIGINAL sentences alongside the preprocessed ones so matches
+        # can be reported back to the user in their real wording (not lowercased,
+        # punctuation-stripped form).
+        try:
+            raw_sentences = [s.strip() for s in sent_tokenize(text) if len(s.strip()) > 10]
+        except Exception:
+            raw_sentences = [s.strip() for s in text.split('.') if len(s.strip()) > 10]
+        input_sentences = [self.preprocess_text(s) for s in raw_sentences]
+
         if not input_sentences:
             return {
                 'plagiarism_score': 0.0,
@@ -129,75 +136,107 @@ class PlagiarismDetector:
         # Ensure vectorizer is available (in case model was loaded without fitting in this session)
         if self.vectorizer is None:
             self._update_model()
-        
-        # Vectorize input text
-        input_vector = self.vectorizer.transform([processed_text])
-        
-        # Calculate similarities with all reference documents
-        similarities = []
-        similar_sentences = []
-        
-        for idx, ref_doc in enumerate(self.reference_documents):
-            # Support both dict-style and plain string reference documents
-            if isinstance(ref_doc, dict):
-                ref_text = ref_doc.get('text', '')
-                ref_id = ref_doc.get('id', f"doc_{idx}")
-                ref_sentences = ref_doc.get('sentences', self.extract_sentences(ref_text))
-            else:
-                ref_text = str(ref_doc)
-                ref_id = f"doc_{idx}"
-                ref_sentences = self.extract_sentences(ref_text)
+        if self.vectorizer is None:
+            return {
+                'plagiarism_score': 0.0,
+                'is_plagiarized': False,
+                'similar_sentences': [],
+                'message': 'Plagiarism model is not ready (no vectorizer available).'
+            }
 
-            ref_vector = self.vectorizer.transform([ref_text])
-            similarity = cosine_similarity(input_vector, ref_vector)[0][0]
-            similarities.append(similarity)
-            
-            # Check sentence-level similarities
-            for i, input_sent in enumerate(input_sentences):
-                for j, ref_sent in enumerate(ref_sentences):
-                    if len(input_sent) > 20 and len(ref_sent) > 20:  # Only compare substantial sentences
-                        sent_similarity = self._calculate_sentence_similarity(input_sent, ref_sent)
-                        if sent_similarity > threshold:
-                            similar_sentences.append({
-                                'input_sentence': input_sent,
-                                'reference_sentence': ref_sent,
-                                'similarity': sent_similarity,
-                                'reference_doc': ref_id
-                            })
-        
-        # Calculate overall plagiarism score
-        max_similarity = max(similarities) if similarities else 0.0
+        # --- Document-level similarity (single batched transform) ---
+        ref_texts = [
+            (ref_doc.get('text', '') if isinstance(ref_doc, dict) else str(ref_doc))
+            for ref_doc in self.reference_documents
+        ]
+        input_vector = self.vectorizer.transform([processed_text])
+        ref_matrix = self.vectorizer.transform(ref_texts)
+        doc_similarities = cosine_similarity(input_vector, ref_matrix)[0]
+        max_similarity = float(doc_similarities.max()) if doc_similarities.size else 0.0
         plagiarism_score = max_similarity * 100
-        
-        # Sort similar sentences by similarity score
-        similar_sentences.sort(key=lambda x: x['similarity'], reverse=True)
-        
+
+        # --- Sentence-level similarity (single batched matrix comparison) ---
+        # Previously this did O(input_sentences x reference_sentences) individual
+        # vectorizer.transform() calls, which made real papers take 10s+. Now we
+        # vectorize all sentences once and compute one cosine-similarity matrix.
+        similar_sentences = self._find_similar_sentences(list(zip(raw_sentences, input_sentences)), threshold)
+
         return {
             'plagiarism_score': round(plagiarism_score, 2),
             'is_plagiarized': plagiarism_score > (threshold * 100),
             'similar_sentences': similar_sentences[:5],  # Top 5 most similar sentences
             'message': self._generate_plagiarism_message(plagiarism_score, threshold)
         }
-    
-    def _calculate_sentence_similarity(self, sent1: str, sent2: str) -> float:
-        """Calculate similarity between two sentences using TF-IDF."""
+
+    def _get_reference_sentences(self) -> List[tuple]:
+        """Return cached (ref_id, sentence) pairs for all reference documents.
+
+        The reference sentences are tokenized only once and reused across calls,
+        instead of re-running sentence tokenization on every check.
+        """
+        if self._ref_sentences_cache is None:
+            cache = []
+            for idx, ref_doc in enumerate(self.reference_documents):
+                if isinstance(ref_doc, dict):
+                    ref_id = ref_doc.get('id', f"doc_{idx}")
+                    sentences = ref_doc.get('sentences')
+                    if sentences is None:
+                        sentences = self.extract_sentences(ref_doc.get('text', ''))
+                else:
+                    ref_id = f"doc_{idx}"
+                    sentences = self.extract_sentences(str(ref_doc))
+                for sent in sentences:
+                    if len(sent) > 20:  # Only keep substantial sentences
+                        cache.append((ref_id, sent))
+            self._ref_sentences_cache = cache
+        return self._ref_sentences_cache
+
+    def _find_similar_sentences(self, input_pairs, threshold: float) -> List[Dict]:
+        """Find input/reference sentence pairs above the similarity threshold.
+
+        input_pairs is a list of (original_sentence, preprocessed_sentence). The
+        preprocessed form is used for matching; the original is reported so the
+        user sees their real wording.
+        """
+        ref_pairs = self._get_reference_sentences()
+        pairs = [(orig, proc) for (orig, proc) in input_pairs if len(proc) > 20]
+        if not ref_pairs or not pairs:
+            return []
+
+        input_origs = [orig for orig, _ in pairs]
+        input_procs = [proc for _, proc in pairs]
+        ref_ids = [rid for rid, _ in ref_pairs]
+        ref_sent_texts = [s for _, s in ref_pairs]
         try:
-            vectors = self.vectorizer.transform([sent1, sent2])
-            similarity = cosine_similarity(vectors[0:1], vectors[1:2])[0][0]
-            return similarity
-        except:
-            return 0.0
-    
+            input_matrix = self.vectorizer.transform(input_procs)
+            ref_matrix = self.vectorizer.transform(ref_sent_texts)
+            sim_matrix = cosine_similarity(input_matrix, ref_matrix)
+        except Exception:
+            return []
+
+        similar_sentences = []
+        for i, row in enumerate(sim_matrix):
+            for j in np.where(row > threshold)[0]:
+                similar_sentences.append({
+                    'input_sentence': input_origs[i],
+                    'reference_sentence': ref_sent_texts[j],
+                    'similarity': float(row[j]),
+                    'reference_doc': ref_ids[j]
+                })
+        similar_sentences.sort(key=lambda x: x['similarity'], reverse=True)
+        return similar_sentences
+
     def _generate_plagiarism_message(self, score: float, threshold: float) -> str:
-        """Generate a human-readable message based on plagiarism score."""
+        """Human-readable message, consistent with is_plagiarized (score > threshold)."""
+        # Check the user's threshold FIRST so the message never contradicts the
+        # is_plagiarized flag or the UI band (which both use score > threshold*100).
+        if score > threshold * 100:
+            return "🚨 High plagiarism risk detected. Significant similarity with reference documents."
         if score < 30:
             return "✅ Low plagiarism risk. The text appears to be original."
-        elif score < 60:
+        if score < 60:
             return "⚠️ Moderate similarity detected. Review for potential paraphrasing."
-        elif score < threshold * 100:
-            return "⚠️ High similarity detected. Consider revising the content."
-        else:
-            return "🚨 High plagiarism risk detected. Significant similarity with reference documents."
+        return "⚠️ Notable similarity detected, but below your threshold. Consider reviewing."
     
     def save_model(self):
         """Save the trained model to disk."""
@@ -216,20 +255,31 @@ class PlagiarismDetector:
             with open(self.model_path, 'rb') as f:
                 model_data = pickle.load(f)
             if isinstance(model_data, dict):
-                self.model = model_data.get('classifier', None)
+                # Saved files use the 'model' key; some older/enhanced files use
+                # 'classifier'. Accept either so the model isn't silently dropped.
+                self.model = model_data.get('model', model_data.get('classifier', None))
                 self.vectorizer = model_data.get('vectorizer', None)
                 self.reference_documents = model_data.get('reference_documents', [])
             else:
                 self.model = model_data
+            self._ref_sentences_cache = None  # reference set (re)loaded
         else:
             print(f"Plagiarism model file not found: {self.model_path}")
     
     def get_statistics(self) -> Dict:
         """Get statistics about the plagiarism detection system."""
+        # Reference documents may be stored as dicts (with a 'sentences' list)
+        # or as plain strings, depending on how the model file was created.
+        total_sentences = 0
+        for doc in self.reference_documents:
+            if isinstance(doc, dict):
+                total_sentences += len(doc.get('sentences', []))
+            else:
+                total_sentences += len(self.extract_sentences(str(doc)))
         return {
             'total_reference_documents': len(self.reference_documents),
-            'total_reference_sentences': sum(len(doc['sentences']) for doc in self.reference_documents),
-            'model_trained': self.model is not None
+            'total_reference_sentences': total_sentences,
+            'model_trained': self.vectorizer is not None
         }
 
 # Initialize global detector instance
@@ -249,6 +299,23 @@ def add_reference_document(text: str, doc_id: str = None):
 def get_plagiarism_statistics() -> Dict:
     """Get statistics about the plagiarism detection system."""
     return plagiarism_detector.get_statistics()
+
+def build_custom_detector(user_docs, include_bundled: bool = True) -> "PlagiarismDetector":
+    """Build a SESSION-SCOPED detector that compares against the user's own
+    documents (optionally plus the bundled 93-paper corpus). Does NOT mutate the
+    global singleton, so user uploads never pollute the shared corpus.
+
+    user_docs: list of (doc_name, text). Returns a fresh PlagiarismDetector.
+    """
+    det = PlagiarismDetector()  # loads the bundled corpus + vectorizer
+    if not include_bundled:
+        det.reference_documents = []
+        det._ref_sentences_cache = None
+        det.vectorizer = None
+    for name, text in (user_docs or []):
+        if text and text.strip():
+            det.add_reference_document(text, name or None)
+    return det
 
 def save_plagiarism_model():
     """Save the current plagiarism detection model."""

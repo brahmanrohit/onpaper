@@ -4,7 +4,16 @@ from nltk.tokenize import sent_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
-nltk.download("punkt")
+
+def _ensure_punkt():
+    """Download the NLTK 'punkt' tokenizer only if it isn't already present."""
+    try:
+        nltk.data.find("tokenizers/punkt")
+    except LookupError:
+        nltk.download("punkt")
+
+
+_ensure_punkt()
 
 def extract_text_from_pdf(pdf_file):
     """Extracts text content from an uploaded PDF file."""

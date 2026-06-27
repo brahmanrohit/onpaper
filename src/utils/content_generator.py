@@ -1,7 +1,143 @@
-import json
-import random
-from typing import Dict, List, Any
-from .gemini_helper import generate_text
+import re
+from typing import Dict, List
+from .gemini_helper import generate_text, is_unavailable_response
+from .reference_finder import search_references, format_reference
+
+# Rules appended to EVERY section prompt to stop the model from inventing
+# data. This is the core fix for fabricated statistics / figures / citations.
+GROUND_RULES = (
+    "STRICT RULES (must follow):\n"
+    "- Use only accurate, well-established, real information about the topic.\n"
+    "- Do NOT invent statistics, percentages, sample sizes, dates, study results, "
+    "figures, or tables. If a precise figure is unknown, describe it qualitatively.\n"
+    "- Never write 'Figure 1', 'Table 1', '85% of sources', or reference visuals/data "
+    "that do not exist.\n"
+    "- Do NOT fabricate citations, author names, journals, or DOIs. Refer to prior work "
+    "only in general terms (e.g., 'prior studies', 'published records').\n"
+    "- If the topic is a real person, place, event, or concept, use genuine facts.\n"
+    "- Formal academic tone, complete sentences, no repetition, no placeholders, no filler."
+)
+
+# What each section should actually contain — covers every section name used
+# across all 10 paper-type templates, so each type renders its proper structure.
+SECTION_GUIDANCE = {
+    "Abstract": "A self-contained summary: the topic and purpose, the central question or thesis, the approach taken, the main points/findings, and the key takeaway. No citations.",
+    "Introduction": "Introduce the topic and why it matters, give the needed background/context, state the central question or thesis, and outline how the paper proceeds.",
+    "Literature Review": "Summarize what existing published work establishes about the topic — major themes, well-known findings, and open questions or gaps. Refer to prior work in general terms only.",
+    "Theoretical Framework": "Explain the key theories, concepts, or models relevant to the topic and how they frame the analysis.",
+    "Theoretical Integration": "Integrate concepts and theories from the relevant disciplines and explain how, combined, they illuminate the topic.",
+    "Methodology": "Describe the approach used to investigate or synthesize the topic — the kinds of sources, evidence, or reasoning the paper draws on and how it is organized. If this is not an original experiment, describe the review/analytical approach honestly; do NOT invent a sample size or experimental setup.",
+    "Methods": "Describe the approach and procedure used. If no original experiment was run, describe how the topic is examined from existing evidence; do NOT invent a sample size or apparatus.",
+    "Methodology Development": "Explain the proposed method or procedure: its rationale, design, and steps. Keep it grounded; do not invent results.",
+    "Background": "Provide the factual context the reader needs: history, setting, key facts, and relevant prior developments about the topic.",
+    "Case Background": "Give the factual background of the specific case: who/what/when/where, the context, and the relevant circumstances.",
+    "Technical Background": "Explain the technical context and prerequisites needed to understand the topic: relevant systems, concepts, and prior approaches.",
+    "Results": "Present the main findings or key established facts about the topic in an organized way. Use real, verifiable information; if exact figures are unknown, describe them qualitatively. Do not invent numbers or reference non-existent figures/tables.",
+    "Analysis": "Critically examine the topic: interpret the key facts and evidence, identify patterns, strengths, weaknesses, and implications, using clear logical reasoning.",
+    "Analytical Framework": "Lay out the criteria, lens, or framework used to analyze the topic and justify the choice.",
+    "Comparative Analysis": "Compare and contrast the relevant subjects/options across clearly defined dimensions, noting similarities, differences, and what they imply.",
+    "Case Analysis": "Analyze the specific case in depth: what happened and why, the contributing factors, and the lessons that can be drawn.",
+    "Technical Analysis": "Analyze the technical aspects: how it works, design choices, trade-offs, and practical considerations.",
+    "Cross-Disciplinary Analysis": "Analyze the topic through multiple disciplinary lenses and synthesize the cross-disciplinary insights.",
+    "Validation": "Explain how the approach or findings are assessed for soundness — reasoning, consistency checks, or comparison with established knowledge. Do not invent benchmark numbers.",
+    "Position Statement": "State the paper's clear position or argument on the issue in a focused, unambiguous way.",
+    "Supporting Arguments": "Present well-reasoned arguments and real evidence supporting the position, and briefly address the main counterarguments.",
+    "Discussion": "Interpret what the key points mean, connect them to the broader context and prior work, discuss implications, and note honest limitations.",
+    "Conclusion": "Summarize the main points and the answer to the central question, state the key contribution/takeaway, and suggest directions for further work. Introduce no new facts.",
+}
+
+_DEFAULT_GUIDANCE = "Write a focused, factual treatment of this section appropriate to its name and the paper type."
+
+
+def section_guidance(section_name: str) -> str:
+    """Return the writing guidance for a section name (with a sensible default)."""
+    return SECTION_GUIDANCE.get(section_name, _DEFAULT_GUIDANCE)
+
+
+def _high_word_bound(word_limit: str, default: int = 250) -> int:
+    """Parse the upper bound from a '150-250' style limit, clamped to a sane range."""
+    try:
+        high = int(str(word_limit).split("-")[-1])
+    except (ValueError, AttributeError):
+        high = default
+    return max(120, min(high, 350))
+
+
+def trim_to_sentence(text: str, max_words: int) -> str:
+    """Trim text to at most max_words, cutting only at a sentence boundary.
+
+    Replaces the old hard ' '.join(words[:250]) slice that chopped mid-sentence.
+    """
+    words = text.split()
+    if len(words) <= max_words:
+        return text.strip()
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    out, count = [], 0
+    for s in sentences:
+        n = len(s.split())
+        if out and count + n > max_words:
+            break
+        out.append(s)
+        count += n
+    result = " ".join(out).strip() if out else " ".join(words[:max_words]).strip()
+    # Hard cap: sentence-aware trimming leaves the first sentence whole, and
+    # bullet/checklist output has no '.' boundaries — so enforce the cap at a
+    # word boundary as a backstop (never breaks mid-word).
+    if len(result.split()) > max_words:
+        result = " ".join(result.split()[:max_words])
+    return result
+
+
+def strip_section_heading(text: str, section_name: str) -> str:
+    """Remove a leading echoed heading line that just repeats the section name.
+
+    Models often start a section with its own title (e.g. "Introduction\\n\\n...");
+    the UI and .docx already render the heading, so this avoids a duplicate.
+    Only strips when the first line EXACTLY matches the section name (allowing
+    leading '#' and a trailing ':'), so real content is never removed.
+    """
+    if not text or not section_name:
+        return (text or "").strip()
+    lines = text.lstrip().split("\n")
+    if lines:
+        first = lines[0].strip().lstrip("#").strip().rstrip(":").strip()
+        if first.lower() == section_name.strip().lower():
+            rest = lines[1:]
+            while rest and not rest[0].strip():
+                rest.pop(0)
+            return "\n".join(rest).strip()
+    return text.strip()
+
+
+def _crossref_citations(topic: str, rows: int = 8) -> List[Dict]:
+    """Fetch REAL references for a topic from CrossRef. Never fabricates.
+
+    Returns a list of {"citation", "type", "doi"}. If CrossRef is unreachable
+    or returns nothing, returns a single honest note instead of fake sources.
+    """
+    try:
+        result = search_references(topic, rows=rows)
+    except Exception as e:
+        result = {"references": [], "error": str(e)}
+    refs = result.get("references", []) if isinstance(result, dict) else []
+    citations = []
+    for ref in refs:
+        formatted = format_reference(ref, "APA")
+        if formatted and len(formatted) > 10:
+            citations.append({
+                "citation": formatted,
+                "type": (ref.get("type") or "journal"),
+                "doi": ref.get("doi", ""),
+            })
+    if not citations:
+        citations.append({
+            "citation": ("(No verified references found via CrossRef. Connect to the internet, "
+                         "or use the Reference Finder tab to find real sources for this topic.)"),
+            "type": "note",
+            "doi": "",
+        })
+    return citations
+
 
 class ResearchContentGenerator:
     """Balanced research paper content generator with type-specific customization."""
@@ -199,8 +335,9 @@ class ResearchContentGenerator:
             }
         }
     
-    def generate_research_paper(self, topic: str, paper_type: str = "empirical", 
-                              include_citations: bool = True, include_data: bool = False) -> Dict:
+    def generate_research_paper(self, topic: str, paper_type: str = "empirical",
+                              include_citations: bool = True, include_data: bool = False,
+                              target_words: int = None) -> Dict:
         """Generate a type-specific research paper following the perfect rules, with realistic upgrades."""
         
         # Validate paper type
@@ -208,12 +345,14 @@ class ResearchContentGenerator:
             paper_type = "empirical"
         
         template = self.research_templates[paper_type]
-        
-        # Generate unique research question/hypothesis and consistent data points
-        research_question = generate_text(f"Generate a unique, specific research question or hypothesis for a {template['name']} on: {topic}. Format as a single clear sentence.").strip()
-        sample_size = generate_text(f"Suggest a realistic sample size or data point for a {template['name']} on: {topic}. Format as a number or short phrase.").strip()
-        key_stat = generate_text(f"Suggest a key statistical result or finding for a {template['name']} on: {topic}, using the sample size '{sample_size}'. Format as a short sentence.").strip()
-        
+
+        # A single, grounded thesis/central question — NOT a fabricated hypothesis
+        # with invented variables. (Replaces the old sample_size/key_stat scaffolding.)
+        thesis = generate_text(
+            f'In one clear, factual sentence, state the central question or thesis that a '
+            f'{template["name"]} on "{topic}" would address. Be specific. Do not invent statistics.'
+        ).strip()
+
         # Generate type-specific content
         paper = {
             "topic": topic,
@@ -223,192 +362,156 @@ class ResearchContentGenerator:
             "citations": [],
             "word_count": 0,
             "focus": template["focus"],
-            "research_question": research_question,
-            "sample_size": sample_size,
-            "key_stat": key_stat
+            "thesis": thesis,
         }
-        
-        # Generate each section with type-specific prompts
+
+        # Generate each section with type-specific, fabrication-free prompts
         for section in template["structure"]:
-            if section != "Title":  # Title is handled separately
+            if section not in ("Title", "References"):  # handled separately
                 paper["sections"][section] = self._generate_section(
-                    section, topic, template, include_citations, include_data,
-                    research_question, sample_size, key_stat
-                )
+                    section, topic, template, thesis, target_words=target_words)
                 paper["word_count"] += paper["sections"][section]["word_count"]
-        
+
         # Add title
         paper["sections"]["Title"] = self._generate_title(topic, paper_type)
-        
-        # Add citations if requested
+
+        # Real citations from CrossRef (never fabricated)
         if include_citations:
             paper["citations"] = self._generate_simple_citations(topic, paper_type)
-        
+
         return paper
     
-    def _generate_title(self, topic: str, paper_type: str) -> str:
+    def _generate_title(self, topic: str, paper_type: str, instructions: str = "") -> str:
         """Generate a type-specific title."""
         template = self.research_templates[paper_type]
-        
+        instr = (f"        - Take this user focus into account: {instructions}\n"
+                 if instructions and instructions.strip() else "")
+
         title_prompt = f"""
         Create a clear, concise research paper title for a {template['name']} on: {topic}
-        
+
         Requirements:
         - Short and clear (under 15 words)
         - Include key keywords
         - Reflect the {paper_type} type focus: {template['focus']}
         - Professional but not overly academic
         - Avoid jargon when possible
-        
+{instr}
         Format: Main topic - Subtitle or focus area
         """
-        
+
         return generate_text(title_prompt).strip()
     
-    def _generate_section(self, section_name: str, topic: str, template: Dict, 
-                         include_citations: bool, include_data: bool,
-                         research_question: str = None, sample_size: str = None, key_stat: str = None) -> Dict:
-        """Generate a type-specific section following the perfect research paper rules, with realistic upgrades."""
-        
+    def _generate_section(self, section_name: str, topic: str, template: Dict,
+                          thesis: str = None, target_words: int = None, instructions: str = "") -> Dict:
+        """Generate a section with type-appropriate, fabrication-free prompting."""
         word_limit = template["word_limits"].get(section_name, "400-600")
         paper_type = template["name"]
         focus = template["focus"]
-        
-        # Section-specific prompt upgrades
-        if section_name == "Abstract":
-            prompt = f"""
-            Write a clear abstract for a {paper_type} on: {topic}
-            Focus: {focus}
-            Research Question: {research_question}
-            Sample Size: {sample_size}
-            Key Stat: {key_stat}
-            Follow this structure (150-250 words):
-            1. Purpose: What was studied?
-            2. Research Question/Hypothesis: {research_question}
-            3. Methods: How was it done? (mention sample size: {sample_size})
-            4. Results: What was found? (mention key stat: {key_stat})
-            5. Conclusion: What does it mean?
-            No placeholders. No incomplete lines. No filler.
-            """
-        elif section_name == "Introduction":
-            prompt = f"""
-            Write an introduction for a {paper_type} on: {topic}
-            Focus: {focus}
-            Research Question: {research_question}
-            Include (150-250 words):
-            1. What is the topic?
-            2. What question are you answering? (state: {research_question})
-            3. Why is this important?
-            4. Briefly mention sample size and key stat for context.
-            No placeholders. No incomplete lines. No filler.
-            """
-        elif section_name == "Results":
-            prompt = f"""
-            Write a results section for a {paper_type} on: {topic}
-            Focus: {focus}
-            Sample Size: {sample_size}
-            Key Stat: {key_stat}
-            Include (150-250 words):
-            1. Present the main findings clearly (use sample size: {sample_size}, key stat: {key_stat})
-            2. Mention at least one visual (e.g., 'Figure 1 shows a scatterplot of ...')
-            3. Highlight unique angles or findings.
-            No placeholders. No incomplete lines. No filler.
-            """
-        elif section_name == "Discussion":
-            prompt = f"""
-            Write a discussion section for a {paper_type} on: {topic}
-            Focus: {focus}
-            Sample Size: {sample_size}
-            Key Stat: {key_stat}
-            Include (150-250 words):
-            1. What do the results mean? (reference key stat: {key_stat})
-            2. How do they compare to previous research?
-            3. What are the implications?
-            4. Mention 1-2 honest limitations (e.g., small sample, cross-sectional design).
-            No placeholders. No incomplete lines. No filler.
-            """
-        elif section_name == "Conclusion":
-            prompt = f"""
-            Write a conclusion for a {paper_type} on: {topic}
-            Focus: {focus}
-            Research Question: {research_question}
-            Include (80-150 words):
-            1. Main takeaway
-            2. Key contributions
-            3. Future work suggestions
-            No placeholders. No incomplete lines. No filler.
-            """
+        thesis_line = f'Central question / thesis: {thesis}\n' if thesis else ""
+        instr_line = (f'Additional focus / instructions: {instructions}\n'
+                      if instructions and instructions.strip() else "")
+
+        # An explicit per-section word count (e.g. the Quick generator slider)
+        # overrides the template default; the Abstract stays short by convention.
+        if target_words:
+            max_words = max(120, min(int(target_words), 1500))
+            if section_name == "Abstract":
+                max_words = min(max_words, 300)
+            word_limit = f"{int(max_words * 0.8)}-{max_words}"
+            length_str = f"about {max_words} words"
         else:
-            # Default for other sections
-            prompt = f"""
-            Write a {section_name} section for a {paper_type} on: {topic}
-            Focus: {focus}
-            Research Question: {research_question}
-            Sample Size: {sample_size}
-            Key Stat: {key_stat}
-            Include (80-250 words):
-            No placeholders. No incomplete lines. No filler.
-            """
-        
+            max_words = _high_word_bound(word_limit)
+            # Reflect the actual achievable cap in the advertised range so the
+            # per-section word badge isn't always "under" for large templates.
+            word_limit = f"{int(max_words * 0.8)}-{max_words}"
+            length_str = f"about {max_words} words"
+
+        prompt = (
+            f'Write the "{section_name}" section of a {paper_type} on the topic: "{topic}".\n'
+            f'Paper focus: {focus}\n'
+            f'{thesis_line}{instr_line}'
+            f'\nWhat this section should contain:\n{section_guidance(section_name)}\n'
+            f'\nTarget length: {length_str}.\n\n'
+            f'{GROUND_RULES}'
+        )
+
         content = generate_text(prompt)
-        # Enforce word count limits (80-250 words)
-        words = content.split()
-        if len(words) > 250:
-            content = ' '.join(words[:250])
-        elif len(words) < 80:
-            # If too short, ask for expansion
-            content += '\n' + generate_text(f"Expand this section to at least 80 words, keeping it relevant and non-repetitive: {content}")
-            content = ' '.join(content.split()[:250])
-        
+
+        # Expand only if genuinely too thin (kept factual, non-repetitive).
+        # Use is_unavailable_response so a backend-down message (which does NOT
+        # start with "Error") doesn't trigger a wasted retry or get concatenated.
+        if len(content.split()) < 80 and not is_unavailable_response(content):
+            extra = generate_text(
+                f'Expand the following {section_name} on "{topic}" to be more complete and '
+                f'specific, staying factual and non-repetitive. {GROUND_RULES}\n\n{content}'
+            )
+            if not is_unavailable_response(extra):
+                content = content + "\n" + extra
+
+        content = strip_section_heading(content, section_name)
+        content = trim_to_sentence(content, max_words)
         return {
             "content": content.strip(),
             "word_count": len(content.split()),
-            "word_limit": word_limit
+            "word_limit": word_limit,
         }
-    
+
     def _generate_simple_citations(self, topic: str, paper_type: str) -> List[Dict]:
-        """Generate type-specific citations (5-8 sources, at least 2-3 recent)."""
-        
-        template = self.research_templates[paper_type]
-        
-        citation_prompt = f"""
-        List 6-8 relevant academic sources for a {template['name']} on: {topic}
-        Focus: {template['focus']}
-        Requirements:
-        - At least 2-3 recent journal articles (last 3 years)
-        - 1-2 classic/important papers
-        - 1-2 books or reports if relevant
-        Format each as:
-        Author(s). (Year). Title. Journal/Publisher.
-        Keep it simple and relevant to the {paper_type} type.
-        """
-        
-        citations_text = generate_text(citation_prompt)
-        # Simple parsing
-        citations = []
-        lines = citations_text.split('\n')
-        for line in lines:
-            line = line.strip()
-            if line and len(line) > 20 and not line.startswith('Include:'):
-                citations.append({
-                    "citation": line,
-                    "type": "journal" if "Journal" in line else "book" if "Book" in line else "other"
-                })
-        return citations[:8]  # Limit to 8 citations
-    
-    def generate_section_only(self, topic: str, section: str, paper_type: str = "empirical") -> str:
+        """Return REAL references from CrossRef (never fabricated)."""
+        return _crossref_citations(topic)
+
+    def generate_section_only(self, topic: str, section: str, paper_type: str = "empirical",
+                              instructions: str = "") -> str:
         """Generate a specific section for a paper type."""
         template = self.research_templates.get(paper_type, self.research_templates["empirical"])
-        
+
         if section == "Title":
-            return self._generate_title(topic, paper_type)
+            return self._generate_title(topic, paper_type, instructions)
         else:
-            section_data = self._generate_section(section, topic, template, True, False)
+            section_data = self._generate_section(section, topic, template, instructions=instructions)
             return section_data["content"]
-    
-    def generate_quick_paper(self, topic: str, paper_type: str = "empirical") -> Dict:
+
+    def edit_section_text(self, text: str, section: str, paper_type: str = "empirical",
+                          instructions: str = "") -> str:
+        """Revise/improve an existing section's text (the 'Editor' behavior)."""
+        if not text or not text.strip():
+            return "Please paste some text to edit."
+        template = self.research_templates.get(paper_type, self.research_templates["empirical"])
+        instr = (f'Specific instructions from the user: {instructions}\n'
+                 if instructions and instructions.strip() else "")
+        prompt = (
+            f'You are editing the "{section}" section of a {template["name"]}.\n'
+            f'Improve grammar, clarity, flow, structure, and academic tone, and strengthen the '
+            f'writing, while preserving the original meaning and any real facts. {instr}'
+            f'Return ONLY the revised section text, with no preamble or commentary.\n\n'
+            f'{GROUND_RULES}\n\nSECTION TO EDIT:\n{text}'
+        )
+        return generate_text(prompt).strip()
+
+    def generate_section_guide(self, topic: str, section: str, paper_type: str = "empirical",
+                               target_words: int = 400, instructions: str = "") -> str:
+        """Write how-to GUIDANCE for a section (not the section content itself)."""
+        template = self.research_templates.get(paper_type, self.research_templates["empirical"])
+        instr = (f'Also address this focus from the user: {instructions}\n'
+                 if instructions and instructions.strip() else "")
+        prompt = (
+            f'Write a practical how-to GUIDE (advice, NOT the section text itself) for writing the '
+            f'"{section}" section of a {template["name"]} on the topic: "{topic}".\n'
+            f'Cover: (1) the purpose of this section, (2) what to include and in what order, '
+            f'(3) concrete tips specific to this topic, and (4) common mistakes to avoid. '
+            f'Use a short bulleted checklist where helpful.\n{instr}'
+            f'Target length: about {target_words} words.\n\n{GROUND_RULES}'
+        )
+        content = generate_text(prompt)
+        cap = max(200, min(int(target_words) + 200, 1300))
+        return trim_to_sentence(content, cap).strip()
+
+    def generate_quick_paper(self, topic: str, paper_type: str = "empirical",
+                             target_words: int = None) -> Dict:
         """Generate a simple, quick research paper of specific type."""
-        return self.generate_research_paper(topic, paper_type, include_citations=True, include_data=False)
+        return self.generate_research_paper(
+            topic, paper_type, include_citations=True, include_data=False, target_words=target_words)
     
     def get_available_types(self) -> List[Dict]:
         """Get list of available paper types with descriptions."""
@@ -430,14 +533,26 @@ def generate_comprehensive_paper(topic: str, research_type: str = "empirical",
     """Main function to generate type-specific research paper."""
     return content_generator.generate_research_paper(topic, research_type, include_citations, include_data)
 
-def generate_section_only(topic: str, section: str, research_type: str = "empirical") -> str:
+def generate_section_only(topic: str, section: str, research_type: str = "empirical",
+                          instructions: str = "") -> str:
     """Generate a specific section for a paper type."""
-    return content_generator.generate_section_only(topic, section, research_type)
+    return content_generator.generate_section_only(topic, section, research_type, instructions)
 
-def generate_quick_paper(topic: str, research_type: str = "empirical") -> Dict:
+def edit_section(text: str, section: str, research_type: str = "empirical",
+                 instructions: str = "") -> str:
+    """Revise/improve an existing section's text."""
+    return content_generator.edit_section_text(text, section, research_type, instructions)
+
+def generate_section_guide(topic: str, section: str, research_type: str = "empirical",
+                           target_words: int = 400, instructions: str = "") -> str:
+    """Write how-to guidance for a section."""
+    return content_generator.generate_section_guide(topic, section, research_type, target_words, instructions)
+
+def generate_quick_paper(topic: str, research_type: str = "empirical",
+                         target_words: int = None) -> Dict:
     """Generate a simple, quick research paper of specific type."""
-    return content_generator.generate_quick_paper(topic, research_type)
+    return content_generator.generate_quick_paper(topic, research_type, target_words)
 
 def get_available_paper_types() -> List[Dict]:
     """Get list of available paper types."""
-    return content_generator.get_available_types() 
+    return content_generator.get_available_types()
