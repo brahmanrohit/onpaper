@@ -10,8 +10,10 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Ignore Streamlit config
-.streamlit/
+# Ignore only Streamlit secrets (API keys) — the config.toml MUST be tracked so
+# Streamlit Community Cloud picks up theme + maxUploadSize on deploy.
+.streamlit/secrets.toml
+main/.streamlit/secrets.toml
 
 # Ignore virtual environments
 venv/

@@ -24,16 +24,9 @@ from nltk.tokenize import sent_tokenize
 from .gemini_helper import generate_text, is_unavailable_response
 from . import embedder
 from .section_splitter import split_sections
+from .nltk_setup import ensure_nltk_data
 
-try:
-    import nltk
-    nltk.data.find("tokenizers/punkt")
-except Exception:
-    try:
-        import nltk
-        nltk.download("punkt")
-    except Exception:
-        pass
+ensure_nltk_data()
 
 
 def chunk_text(text: str, target_words: int = 130, overlap_sentences: int = 1) -> List[str]:

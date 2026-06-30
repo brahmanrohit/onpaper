@@ -162,16 +162,34 @@ class ResearchPaperTypeDetector:
             print(f"Enhanced paper type model or vectorizer not found: {self.model_path}, {self.vectorizer_path}")
             return False
 
-# Global instance
-paper_type_detector = ResearchPaperTypeDetector()
+# Lazy global instance — the paper-type model is a few-MB pickle, so it loads on
+# first use, not at import. These helpers are currently unused on the runtime
+# path, so in a normal session the model is never loaded at all.
+_paper_type_detector = None
+
+
+def get_paper_type_detector() -> "ResearchPaperTypeDetector":
+    """Return the shared detector, constructing (and loading the model) on first use."""
+    global _paper_type_detector
+    if _paper_type_detector is None:
+        _paper_type_detector = ResearchPaperTypeDetector()
+    return _paper_type_detector
+
+
+def __getattr__(name):
+    """Backward-compat: ``paper_type_detector.paper_type_detector`` still resolves (lazily)."""
+    if name == "paper_type_detector":
+        return get_paper_type_detector()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 def auto_detect_paper_type(topic: str) -> Dict[str, Any]:
     """Auto-detect the most appropriate paper type for a given topic."""
-    return paper_type_detector.detect_paper_type(topic)
+    return get_paper_type_detector().detect_paper_type(topic)
 
 def get_type_guidance(paper_type: str) -> Dict[str, Any]:
     """Get type-specific guidance for content generation."""
-    return paper_type_detector.get_type_specific_guidance(paper_type)
+    return get_paper_type_detector().get_type_specific_guidance(paper_type)
 
 def train_paper_type_model() -> None:
     """Train the paper type detection model.
@@ -187,4 +205,4 @@ def train_paper_type_model() -> None:
 
 def load_paper_type_model() -> bool:
     """Load the trained paper type detection model."""
-    return paper_type_detector.load_model() 
+    return get_paper_type_detector().load_model()

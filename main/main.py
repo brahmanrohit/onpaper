@@ -17,6 +17,7 @@ from src.utils.content_generator import (
 from src.utils.default_paper_generator import generate_default_paper, create_word_document, text_to_docx
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB — keep in sync with .streamlit/config.toml maxUploadSize
 from src.utils.topic_type_predictor import TopicTypePredictor
 from src.utils.grammar_checker import check_grammar_text
 from src.utils.readability_analyzer import analyze_text, compare_to_target, analyze_sentences, AUDIENCE_PRESETS, grade_band_status
@@ -39,12 +40,11 @@ from src.utils.tone_auditor import analyze_tone
 import matplotlib.pyplot as plt
 import io
 
-# Ensure NLTK data is downloaded
-import nltk
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+# Ensure NLTK data (punkt_tab/punkt/stopwords) is downloaded. Centralized so the
+# nltk>=3.9 'punkt_tab' resource is fetched too — downloading only 'punkt' crashes
+# tokenization on a clean Streamlit Cloud container.
+from src.utils.nltk_setup import ensure_nltk_data
+ensure_nltk_data()
 
 # Set page config (MUST be the first Streamlit command).
 st.set_page_config(
@@ -150,6 +150,14 @@ def read_uploaded_file(uploaded_file):
     """
     if uploaded_file is None:
         return None, "No file provided."
+    # Guard against oversized uploads OOM-killing the (memory-limited) free-tier
+    # container before parsing. Streamlit also enforces server.maxUploadSize, but
+    # this is a defensive second check in case that config isn't picked up.
+    size = getattr(uploaded_file, "size", None)
+    if size and size > MAX_UPLOAD_BYTES:
+        return None, (f"File is too large ({size / 1024 / 1024:.1f} MB). "
+                      f"The limit is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB — "
+                      "split the document or paste the text instead.")
     try:
         # Streamlit reuses the SAME file object across reruns; without seeking to
         # the start, a second read returns empty (the pointer is left at EOF).

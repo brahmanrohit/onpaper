@@ -12,11 +12,9 @@ from typing import Dict, List
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-# Ensure the 'punkt' tokenizer is available (downloaded only if missing).
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt")
+# Ensure NLTK tokenizer data (punkt_tab/punkt) is available.
+from .nltk_setup import ensure_nltk_data
+ensure_nltk_data()
 
 _VOWELS = "aeiouy"
 

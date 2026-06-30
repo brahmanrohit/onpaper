@@ -195,16 +195,32 @@ class DefaultPaperGenerator:
                 lines.append(f"{i}. {citation['citation']}")
             return "\n".join(lines).encode('utf-8')
 
-# Global instance
-default_paper_generator = DefaultPaperGenerator()
+# Lazy global instance — built on first use, reused across reruns.
+_default_paper_generator = None
+
+
+def get_default_paper_generator() -> "DefaultPaperGenerator":
+    """Return the shared DefaultPaperGenerator, constructing it on first use."""
+    global _default_paper_generator
+    if _default_paper_generator is None:
+        _default_paper_generator = DefaultPaperGenerator()
+    return _default_paper_generator
+
+
+def __getattr__(name):
+    """Backward-compat: ``default_paper_generator.default_paper_generator`` resolves (lazily)."""
+    if name == "default_paper_generator":
+        return get_default_paper_generator()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 def generate_default_paper(topic: str, paper_type: str = "empirical", suggestions: dict = None, images: list = None) -> Dict[str, Any]:
     """Generate a default research paper."""
-    return default_paper_generator.generate_default_paper(topic, paper_type, suggestions, images)
+    return get_default_paper_generator().generate_default_paper(topic, paper_type, suggestions, images)
 
 def create_word_document(paper: Dict[str, Any]) -> bytes:
     """Create Word document from paper."""
-    return default_paper_generator.create_word_document(paper)
+    return get_default_paper_generator().create_word_document(paper)
 
 
 def text_to_docx(title: str, text: str) -> bytes:

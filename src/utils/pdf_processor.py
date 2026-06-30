@@ -5,15 +5,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
 
-def _ensure_punkt():
-    """Download the NLTK 'punkt' tokenizer only if it isn't already present."""
-    try:
-        nltk.data.find("tokenizers/punkt")
-    except LookupError:
-        nltk.download("punkt")
+from .nltk_setup import ensure_nltk_data
 
-
-_ensure_punkt()
+ensure_nltk_data()
 
 def extract_text_from_pdf(pdf_file):
     """Extracts text content from an uploaded PDF file."""

@@ -7,42 +7,57 @@ import os
 import requests
 from typing import Optional, Dict, Any
 
+# Keep server-discovery probes short so a deploy with no local Ollama (e.g.
+# Streamlit Community Cloud) isn't blocked for long the first time the backend is
+# checked. Overridable via env for slower local setups.
+_PROBE_TIMEOUT = float(os.getenv("OLLAMA_PROBE_TIMEOUT", "1.5"))
+_GEN_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "60"))
+
+
 class OllamaHelper:
     """Helper class for Ollama AI integration."""
-    
+
     def __init__(self):
-        self.base_url = self._get_ollama_url()
-        self.available = self._check_ollama_available()
-        self.model = self._get_default_model()
-        
-    def _get_ollama_url(self) -> str:
-        """Get Ollama server URL from environment or use default."""
-        # Try to get from environment first
+        # Single discovery pass: find a reachable server (if any) and record
+        # availability in one shot, instead of probing the network three+ times.
+        self.base_url, self.available = self._discover()
+        self.model = (self._get_default_model() if self.available
+                      else (os.getenv("OLLAMA_MODEL") or "llama3.2"))
+
+    def _candidate_urls(self) -> list:
+        """Ollama URLs to try. An explicit OLLAMA_BASE_URL wins (and is the only
+        one tried); otherwise probe the usual local addresses."""
         url = os.getenv("OLLAMA_BASE_URL")
         if url:
-            return url
-            
-        # Default URLs to try (in order of preference). For a non-default host,
-        # set OLLAMA_BASE_URL in .env rather than hardcoding an IP here.
-        default_urls = [
-            "http://localhost:11434",  # Local
-            "http://127.0.0.1:11434",  # Local alternative
+            return [url]
+        # For a non-default host, set OLLAMA_BASE_URL in .env rather than
+        # hardcoding an IP here.
+        return [
+            "http://localhost:11434",             # Local
+            "http://127.0.0.1:11434",             # Local alternative
             "http://host.docker.internal:11434",  # WSL/Docker bridge
         ]
-        
-        for url in default_urls:
+
+    def _discover(self):
+        """Return (base_url, available). One short-timeout probe per candidate;
+        on a host with no Ollama this costs at most len(candidates)*_PROBE_TIMEOUT
+        and never raises."""
+        candidates = self._candidate_urls()
+        for url in candidates:
             try:
-                response = requests.get(f"{url}/api/tags", timeout=2)
-                if response.status_code == 200:
-                    print(f"✓ Ollama found at: {url}")
-                    return url
-            except:
+                resp = requests.get(f"{url}/api/tags", timeout=_PROBE_TIMEOUT)
+                if resp.status_code == 200:
+                    return url, True
+            except requests.RequestException:
                 continue
-                
-        print("⚠️ Ollama not found at default URLs")
-        print("Please ensure Ollama is running or set OLLAMA_BASE_URL in .env")
-        return "http://localhost:11434"  # Default fallback
-    
+        # Nothing reachable — fall back to the first candidate URL, marked down.
+        return candidates[0], False
+
+    def _get_ollama_url(self) -> str:
+        """Backward-compat shim: the URL discovered at construction."""
+        return self.base_url
+
+
     def _get_default_model(self) -> str:
         """Get default model from environment or use sensible defaults."""
         model = os.getenv("OLLAMA_MODEL")
@@ -74,26 +89,22 @@ class OllamaHelper:
         return "llama3.2"  # Default fallback
     
     def _check_ollama_available(self) -> bool:
-        """Check if Ollama server is available."""
-        try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
-            return response.status_code == 200
-        except:
-            return False
-    
+        """Whether the server is reachable (determined once during discovery)."""
+        return self.available
+
     def list_models(self) -> list:
         """List all available Ollama models."""
         if not self.available:
             return []
-            
+
         try:
             response = requests.get(f"{self.base_url}/api/tags", timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                models = [model['name'] for model in data.get('models', [])]
+                models = [m.get('name') for m in data.get('models', []) if m.get('name')]
                 return models
             return []
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"Error listing models: {e}")
             return []
     
@@ -119,7 +130,7 @@ class OllamaHelper:
             response = requests.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
-                timeout=60
+                timeout=_GEN_TIMEOUT
             )
             
             if response.status_code == 200:

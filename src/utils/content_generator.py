@@ -525,34 +525,51 @@ class ResearchContentGenerator:
             })
         return types
 
-# Global instance
-content_generator = ResearchContentGenerator()
+# Lazy global instance — cheap to build (just templates) but kept lazy for
+# consistency and zero import-time work. Reused across reruns as a module global.
+_content_generator = None
 
-def generate_comprehensive_paper(topic: str, research_type: str = "empirical", 
+
+def get_content_generator() -> "ResearchContentGenerator":
+    """Return the shared content generator, constructing it on first use."""
+    global _content_generator
+    if _content_generator is None:
+        _content_generator = ResearchContentGenerator()
+    return _content_generator
+
+
+def __getattr__(name):
+    """Backward-compat: ``content_generator.content_generator`` still resolves (lazily)."""
+    if name == "content_generator":
+        return get_content_generator()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def generate_comprehensive_paper(topic: str, research_type: str = "empirical",
                                include_data: bool = False, include_citations: bool = True) -> Dict:
     """Main function to generate type-specific research paper."""
-    return content_generator.generate_research_paper(topic, research_type, include_citations, include_data)
+    return get_content_generator().generate_research_paper(topic, research_type, include_citations, include_data)
 
 def generate_section_only(topic: str, section: str, research_type: str = "empirical",
                           instructions: str = "") -> str:
     """Generate a specific section for a paper type."""
-    return content_generator.generate_section_only(topic, section, research_type, instructions)
+    return get_content_generator().generate_section_only(topic, section, research_type, instructions)
 
 def edit_section(text: str, section: str, research_type: str = "empirical",
                  instructions: str = "") -> str:
     """Revise/improve an existing section's text."""
-    return content_generator.edit_section_text(text, section, research_type, instructions)
+    return get_content_generator().edit_section_text(text, section, research_type, instructions)
 
 def generate_section_guide(topic: str, section: str, research_type: str = "empirical",
                            target_words: int = 400, instructions: str = "") -> str:
     """Write how-to guidance for a section."""
-    return content_generator.generate_section_guide(topic, section, research_type, target_words, instructions)
+    return get_content_generator().generate_section_guide(topic, section, research_type, target_words, instructions)
 
 def generate_quick_paper(topic: str, research_type: str = "empirical",
                          target_words: int = None) -> Dict:
     """Generate a simple, quick research paper of specific type."""
-    return content_generator.generate_quick_paper(topic, research_type, target_words)
+    return get_content_generator().generate_quick_paper(topic, research_type, target_words)
 
 def get_available_paper_types() -> List[Dict]:
     """Get list of available paper types."""
-    return content_generator.get_available_types()
+    return get_content_generator().get_available_types()

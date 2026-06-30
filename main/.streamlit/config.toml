@@ -1,0 +1,12 @@
+# Local-dev config (used by `python run.py`, which cd's into main/).
+# The cloud deploy reads the repo-root ../.streamlit/config.toml instead.
+[server]
+headless = true
+port = 8501
+maxUploadSize = 10          # MB — keep in sync with the root .streamlit/config.toml
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"

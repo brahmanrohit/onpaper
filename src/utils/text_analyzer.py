@@ -13,21 +13,9 @@ warnings.filterwarnings('ignore')
 
 from .config import PLAGIARISM_MODEL_PATH, PLAGIARISM_VECTORIZER_PATH
 
-# Download required NLTK data
-def download_nltk_data():
-    """Download required NLTK data."""
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except LookupError:
-        nltk.download('punkt')
-    
-    try:
-        nltk.data.find('corpora/stopwords')
-    except LookupError:
-        nltk.download('stopwords')
-
-# Download data at module import
-download_nltk_data()
+# Ensure required NLTK data (punkt_tab/punkt/stopwords) is present.
+from .nltk_setup import ensure_nltk_data
+ensure_nltk_data()
 
 class PlagiarismDetector:
     """ML-based plagiarism detection system using TF-IDF and cosine similarity."""
@@ -282,23 +270,48 @@ class PlagiarismDetector:
             'model_trained': self.vectorizer is not None
         }
 
-# Initialize global detector instance
-plagiarism_detector = PlagiarismDetector()
+# Lazy global detector — built on first use so importing this module (and thus
+# launching the app) doesn't pay the pickle-load cost up front. As a module
+# global it loads once per process and is reused across Streamlit reruns
+# (equivalent to @st.cache_resource, without coupling this module to the UI).
+_plagiarism_detector = None
+
+
+def get_plagiarism_detector() -> "PlagiarismDetector":
+    """Return the shared PlagiarismDetector, constructing it on first use."""
+    global _plagiarism_detector
+    if _plagiarism_detector is None:
+        det = PlagiarismDetector()  # loads the bundled corpus + vectorizer
+        # First-ever run on a writable FS with no saved model: seed sample data.
+        # On a deployed env the bundled pkl already exists, so this is a no-op.
+        if not os.path.exists(det.model_path):
+            _seed_sample_data(det)
+        _plagiarism_detector = det
+    return _plagiarism_detector
+
+
+def __getattr__(name):
+    """Backward-compat: ``text_analyzer.plagiarism_detector`` still resolves (lazily)."""
+    if name == "plagiarism_detector":
+        return get_plagiarism_detector()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 def check_plagiarism(text: str, threshold: float = 0.7) -> Dict:
     """Main function to check plagiarism - maintains backward compatibility."""
-    return plagiarism_detector.check_plagiarism(text, threshold)
+    return get_plagiarism_detector().check_plagiarism(text, threshold)
 
 def add_reference_document(text: str, doc_id: str = None):
     """Add a reference document to the plagiarism detection system."""
+    det = get_plagiarism_detector()
     # Ensure doc_id is always a string
     if doc_id is None or doc_id.strip() == "":
-        doc_id = f"doc_{len(plagiarism_detector.reference_documents)}"
-    plagiarism_detector.add_reference_document(text, doc_id)
+        doc_id = f"doc_{len(det.reference_documents)}"
+    det.add_reference_document(text, doc_id)
 
 def get_plagiarism_statistics() -> Dict:
     """Get statistics about the plagiarism detection system."""
-    return plagiarism_detector.get_statistics()
+    return get_plagiarism_detector().get_statistics()
 
 def build_custom_detector(user_docs, include_bundled: bool = True) -> "PlagiarismDetector":
     """Build a SESSION-SCOPED detector that compares against the user's own
@@ -319,11 +332,13 @@ def build_custom_detector(user_docs, include_bundled: bool = True) -> "Plagiaris
 
 def save_plagiarism_model():
     """Save the current plagiarism detection model."""
-    plagiarism_detector.save_model()
+    get_plagiarism_detector().save_model()
 
-# Add some sample reference documents for testing
-def initialize_sample_data():
-    """Initialize the system with some sample reference documents."""
+# Seed a couple of sample reference documents (first-run only, when no saved
+# model exists). Invoked by get_plagiarism_detector(); on a deployed env the
+# bundled pkl is already present so this never runs.
+def _seed_sample_data(detector: "PlagiarismDetector"):
+    """Initialize a detector with some sample reference documents."""
     sample_docs = [
         {
             'id': 'sample_ai_paper',
@@ -347,10 +362,6 @@ def initialize_sample_data():
     ]
     
     for doc in sample_docs:
-        plagiarism_detector.add_reference_document(doc['text'], doc['id'])
-    
-    plagiarism_detector.save_model()
+        detector.add_reference_document(doc['text'], doc['id'])
 
-# Initialize with sample data if no model exists
-if not os.path.exists(plagiarism_detector.model_path):
-    initialize_sample_data()
+    detector.save_model()

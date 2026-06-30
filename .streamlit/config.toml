@@ -1,0 +1,11 @@
+# Repo-root Streamlit config — this is the one Streamlit Community Cloud reads
+# (cloud runs from the repo root, so main/.streamlit/config.toml is ignored there).
+[server]
+headless = true
+maxUploadSize = 10          # MB — caps uploads so a huge PDF can't OOM the free tier
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"

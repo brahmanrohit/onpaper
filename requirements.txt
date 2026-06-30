@@ -28,11 +28,10 @@ nltk==3.9.1
 numpy==2.2.3
 packaging==24.2
 pandas==2.2.3
-pdfkit==1.0.0  # ✅ PDF Generation ke liye
 pillow==11.1.0
 protobuf>=3.20.0,<5.0.0
 pyarrow==19.0.1
-pydantic>=2.13,<3        # >=2.13 required by google-genai
+pydantic>=2.13,<3
 pydantic_core>=2.46
 pydeck==0.9.1
 Pygments==2.19.1
@@ -60,8 +59,8 @@ typing_extensions>=4.15
 tzdata==2025.1
 urllib3==2.3.0
 watchdog==6.0.0
-python-docx
-matplotlib
+python-docx==1.2.0
+matplotlib==3.10.6
 # NOTE: torch + transformers are intentionally NOT listed here. They are heavy
 # (large download, can exceed the Streamlit Community Cloud free-tier memory) and
 # are only used by two optional features (the perplexity-based AI detector and

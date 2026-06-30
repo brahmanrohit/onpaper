@@ -246,9 +246,25 @@ Focus on:
         res['message'] = f'Basic corrections applied using fallback mode. (AI unavailable: {error_msg})'
         return res
 
-# Global instance
-grammar_checker = GrammarChecker()
+# Lazy global instance — built on first use, reused across reruns.
+_grammar_checker = None
+
+
+def get_grammar_checker() -> "GrammarChecker":
+    """Return the shared GrammarChecker, constructing it on first use."""
+    global _grammar_checker
+    if _grammar_checker is None:
+        _grammar_checker = GrammarChecker()
+    return _grammar_checker
+
+
+def __getattr__(name):
+    """Backward-compat: ``grammar_checker.grammar_checker`` still resolves (lazily)."""
+    if name == "grammar_checker":
+        return get_grammar_checker()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 def check_grammar_text(text: str) -> Dict:
     """Main function to check grammar - maintains backward compatibility"""
-    return grammar_checker.check_grammar(text)
+    return get_grammar_checker().check_grammar(text)

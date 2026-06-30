@@ -7,7 +7,7 @@ section's word count vs the template's recommended range. No AI backend needed.
 """
 
 from .section_splitter import split_sections
-from .content_generator import content_generator
+from .content_generator import get_content_generator
 from .readability_analyzer import compare_to_target
 
 # Template section names that mean the same thing as a detected canonical name.
@@ -22,7 +22,7 @@ def _canon(name: str) -> str:
 
 def get_paper_types():
     """List of (key, display name) for the UI selector."""
-    return [(k, t["name"]) for k, t in content_generator.research_templates.items()]
+    return [(k, t["name"]) for k, t in get_content_generator().research_templates.items()]
 
 
 def check_structure(text: str, paper_type: str = "empirical") -> dict:
@@ -30,7 +30,7 @@ def check_structure(text: str, paper_type: str = "empirical") -> dict:
     if not text:
         return {"error": "No text provided."}
 
-    templates = content_generator.research_templates
+    templates = get_content_generator().research_templates
     tpl = templates.get(paper_type, templates["empirical"])
     # Expected content sections (Title is not a prose section a user pastes).
     expected = [s for s in tpl["structure"] if s != "Title"]
