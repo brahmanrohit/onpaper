@@ -1,69 +1,19 @@
-altair==5.5.0
-annotated-types==0.7.0
-anyio==4.8.0
-attrs==25.1.0
-blinker==1.9.0
-cachetools==5.5.2
-certifi==2025.1.31
-charset-normalizer==3.4.1
-click==8.1.8
-colorama==0.4.6
-distro==1.9.0
-gitdb==4.0.12
-GitPython==3.1.44
-h11==0.14.0
-httpcore==1.0.7
-httpx==0.28.1
-idna==3.10
-Jinja2==3.1.5
-jiter==0.8.2
-joblib==1.4.2
-jsonschema==4.23.0
-jsonschema-specifications==2024.10.1
-markdown-it-py==3.0.0
-MarkupSafe==3.0.2
-mdurl==0.1.2
-narwhals==1.28.0
-nltk==3.9.1
-numpy==2.2.3
-packaging==24.2
-pandas==2.2.3
-pillow==11.1.0
-protobuf>=3.20.0,<5.0.0
-pyarrow==19.0.1
-pydantic>=2.13,<3
-pydantic_core>=2.46
-pydeck==0.9.1
-Pygments==2.19.1
-PyPDF2==3.0.1
-python-dotenv==1.0.1  # ✅ Environment Variables ke liye
-python-dateutil==2.9.0.post0
-pytz==2025.1
-referencing==0.36.2
-regex==2024.11.6
-requests==2.32.3
-rich==13.9.4
-rpds-py==0.23.1
-scikit-learn==1.6.1
-scipy==1.15.2
-six==1.17.0
-smmap==5.0.2
-sniffio==1.3.1
-streamlit==1.42.2
-tenacity==9.0.0
-threadpoolctl==3.5.0
-toml==0.10.2
-tornado==6.4.2
-tqdm==4.67.1
-typing_extensions>=4.15
-tzdata==2025.1
-urllib3==2.3.0
-watchdog==6.0.0
-python-docx==1.2.0
-matplotlib==3.10.6
-# NOTE: torch + transformers are intentionally NOT listed here. They are heavy
-# (large download, can exceed the Streamlit Community Cloud free-tier memory) and
-# are only used by two optional features (the perplexity-based AI detector and
-# dense-embedding semantic chat), both of which import them lazily and fall back
-# gracefully when absent. To enable those features in a local/larger environment:
-#   pip install "torch>=2.6" "transformers>=4.44,<6"   # CPU-only torch index for smaller install
+# Direct dependencies only. pip resolves everything else (pandas, pyarrow, scipy, ...)
+# to versions that ship prebuilt wheels for whatever Python the host runs, so a
+# deploy never falls back to compiling numpy/scipy from source.
+streamlit>=1.42,<2
+scikit-learn>=1.6.1,<2
+numpy>=2.2
+joblib>=1.4
+nltk>=3.9.1
+PyPDF2>=3.0.1
+python-docx>=1.1
+python-dotenv>=1.0
+requests>=2.32
+matplotlib>=3.10
+
+# NOTE: torch + transformers are intentionally NOT listed. They are heavy (large
+# download, can exceed free-tier memory) and only power two optional features
+# (perplexity-based AI detector, dense-embedding chat retrieval), both of which
+# import them lazily and fall back gracefully when absent. To enable locally:
+#   pip install "torch>=2.6" "transformers>=4.44,<6"

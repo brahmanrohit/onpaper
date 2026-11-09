@@ -19,10 +19,12 @@ jobs:
   test:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    strategy:
+      matrix: { python: ["3.13", "3.14"] }  # whatever version the host picks must work
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.13", cache: pip }
+        with: { python-version: "${{ matrix.python }}", cache: pip }
       - run: pip install -q -r requirements.txt pytest
       - run: python -m nltk.downloader -q punkt_tab punkt stopwords
       - run: python -m pytest -q tests/ -p no:warnings

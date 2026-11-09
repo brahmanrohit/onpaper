@@ -61,6 +61,8 @@ st.markdown("""
 h1, h2, h3, .op-serif { font-family: 'Fraunces', Georgia, serif !important; letter-spacing: -0.01em; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .1rem; }
 section[data-testid="stSidebar"] .stButton button { justify-content: flex-start; min-height: 2.1rem; border: none; padding: .25rem .6rem; }
+/* newer Streamlit wraps the label in a full-width, centred box */
+section[data-testid="stSidebar"] .stButton button > div { justify-content: flex-start; }
 section[data-testid="stSidebar"] .stButton button[kind="secondary"] { background: transparent; }
 section[data-testid="stSidebar"] .stButton button[kind="secondary"]:hover { background: rgba(160, 68, 40, .08); }
 .op-brand { font-family: 'Fraunces', Georgia, serif; font-size: 1.7rem; font-weight: 700; color: #A04428; line-height: 1; }
