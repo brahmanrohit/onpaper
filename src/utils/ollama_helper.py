@@ -209,6 +209,10 @@ def generate_text_with_ollama(prompt: str, model: Optional[str] = None) -> str:
 
 def is_ollama_available() -> bool:
     """Check if Ollama is available."""
+    # AI_BACKEND=groq (set on hosted deploys) means there is no Ollama: skip the
+    # network probe entirely instead of timing out on every candidate URL.
+    if os.getenv("AI_BACKEND", "auto").strip().lower() == "groq":
+        return False
     helper = get_ollama_helper()
     return helper.available
 

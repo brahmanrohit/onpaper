@@ -66,6 +66,21 @@ The app opens at **http://localhost:8501**.
 
 ---
 
+## Deploy (free, always-on)
+
+OnPaper runs on a free **Hugging Face Space** (Docker: 2 vCPU / 16 GB RAM) instead of Streamlit
+Community Cloud (1 GB, frequent sleeps). `.github/workflows/huggingface.yml` redeploys on every push
+to `main`, and every 6 hours wakes or restarts the Space if it slept or crashed.
+
+One-time setup, in GitHub → Settings → Secrets and variables → Actions:
+- secret **`HF_TOKEN`**: a Hugging Face *write* token (huggingface.co/settings/tokens)
+- variable **`HF_SPACE`**: e.g. `your-hf-username/onpaper`
+- secret **`GROQ_API_KEY`** (optional): turns on the AI features
+
+Then run the workflow once (Actions → Hugging Face Space → Run workflow). Locally: `docker build -t onpaper . && docker run -p 7860:7860 onpaper`.
+
+---
+
 ## Project Structure
 
 Real, current layout (the older `app/` + `core/` proposal in past docs was **never implemented**).

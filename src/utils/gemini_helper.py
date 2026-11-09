@@ -54,16 +54,13 @@ def load_env_file():
 # Load environment variables
 load_env_file()
 
-# Report backend availability at import (informational only).
+# Report backend availability at import (informational only). Deliberately NO
+# Ollama probe here: it is a network round-trip per candidate URL and used to add
+# ~6s to every cold start. Ollama is discovered lazily on first real use.
 if is_groq_available():
     print(f"Groq backend ready (model: {get_groq_model()}).")
-elif is_ollama_available():
-    print("Ollama backend ready (local).")
 else:
-    print("Warning: No AI backend configured. Generation/grammar/paraphrase will be limited.")
-    print("Enable one of:")
-    print("  - Groq (free, fast):   set GROQ_API_KEY in .env  (https://console.groq.com/keys)")
-    print("  - Ollama (local, free): install Ollama and run `ollama pull llama3.2`")
+    print("No GROQ_API_KEY set; AI features will use a local Ollama server if one is running.")
 
 
 def is_unavailable_response(result) -> bool:
