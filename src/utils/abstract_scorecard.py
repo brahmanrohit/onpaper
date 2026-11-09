@@ -18,10 +18,13 @@ MOVES = {
     "Background / context": re.compile(
         r"\b(increasingly important|in recent years|growing (?:interest|concern|body)|"
         r"has become|widely (?:used|recognized)|plays? a (?:critical|significant|key) role|"
-        r"remains? a (?:challenge|problem)|emerging)\b", re.I),
+        r"remains? a (?:challenge|problem)|emerging|increasingly|"
+        r"(?:is|are) (?:often|commonly|widely|frequently) (?:blamed|used|reported|assumed|cited|linked))\b", re.I),
     "Gap / aim": re.compile(
-        r"\b(however,|this (?:paper|study|review|article|work) (?:aims|investigat|examin|present|propos|explor)|"
-        r"we (?:propose|investigate|examine|present|explore|develop|aim)|the aim of|our (?:aim|objective|goal)|"
+        r"\b(however,|this (?:paper|study|review|article|work) (?:aims|investigat|examin|present|propos|explor|"
+        r"test|assess|evaluat|compar|quantif|ask)|"
+        r"we (?:propose|investigate|examine|present|explore|develop|aim|test|assess|evaluate|ask)|the aim of|"
+        r"our (?:aim|objective|goal)|little is known|"
         r"to address|research gap|lack of|remains? (?:unclear|unknown|poorly understood))", re.I),
     "Methods": re.compile(
         r"\b(we (?:analy[sz]ed?|conducted|collected|used|developed|surveyed|measured|trained)|"
@@ -31,11 +34,12 @@ MOVES = {
     "Results": re.compile(
         r"\b(results? (?:show|indicate|suggest|reveal)|we (?:find|found|observe[d]?|show)|"
         r"findings? (?:show|indicate|suggest)|showed that|revealed that|demonstrated that|"
-        r"outperform|achieved (?:an?|\d)|significant(?:ly)? (?:higher|lower|improve|increase|decrease))", re.I),
+        r"outperform|achieved (?:an?|\d)|significant(?:ly)? (?:higher|lower|improve|increase|decrease)|"
+        r"(?:was|were|is|are) (?:associated|correlated) with|(?:increased|decreased|reduced|improved) by \d)", re.I),
     "Conclusion / implication": re.compile(
         r"\b(we conclude|in conclusion|conclusion[s]?:?|implications?|we suggest|"
         r"contribut|future (?:work|research)|in summary|these (?:results|findings) (?:suggest|imply|highlight)|"
-        r"underscore)\b", re.I),
+        r"underscore|should (?:therefore )?(?:target|focus|consider|prioriti[sz]e|be)|these results imply)\b", re.I),
 }
 
 TIPS = {

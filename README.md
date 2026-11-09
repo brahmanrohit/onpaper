@@ -30,7 +30,8 @@ The app opens on a **Home** page; the sidebar groups every tool by stage — **C
 |---------|--------------|------------|
 | **Content Generation** | Generate a full paper (Word `.docx`), a quick paper (TXT), a single section, or a section-wise guide. Supports 10 paper types. | Groq/Ollama + templates |
 | **Paper Analysis** | Extract text from an uploaded PDF/TXT and produce a TF-IDF summary. | PyPDF2 + scikit-learn |
-| **Paper Health Check** | One click runs every offline analyzer (readability, evidence, flow, tone, terminology, repetition, structure, abstract) and returns a 0–100 report card, a ranked fix list, and a Markdown report. | Native (no key) — `src/utils/health_check.py` |
+| **Paper Health Check** | One click runs every offline analyzer (readability, evidence, flow, tone, terminology, repetition, structure, abstract): a 0–100 report card, your draft with every problem sentence **highlighted in place**, and a ranked fix list where each item has a one-click action — **✨ Rewrite → Apply to draft** (re-scores automatically, with a progress trend) or **🔗 Find a source** (opens Reference Finder already searching). Export as .md/.docx. Try it instantly with the bundled sample draft. | Native (no key); rewrites use Groq/Ollama |
+| **One draft, every tool** | Paste or upload once — the draft follows you into every analysis tool, already filled in. | — |
 | **Grammar Check** | Detect & correct grammar/spelling/style with change tracking and a side-by-side diff. | Gemini (with regex fallback) |
 | **Plagiarism Detection** | Compare text against a reference corpus using TF-IDF + cosine similarity, at document and sentence level. | scikit-learn |
 | **Reference Finder** | Find **real** academic papers with DOIs via the free CrossRef API; format in APA/IEEE/MLA. | CrossRef (no key) |
@@ -76,6 +77,8 @@ One-time setup, in GitHub → Settings → Secrets and variables → Actions:
 - secret **`HF_TOKEN`**: a Hugging Face *write* token (huggingface.co/settings/tokens)
 - variable **`HF_SPACE`**: e.g. `your-hf-username/onpaper`
 - secret **`GROQ_API_KEY`** (optional): turns on the AI features
+
+Every push first runs the test suite (`tests/`, including headless end-to-end UI flows); a failure blocks the deploy.
 
 Then run the workflow once (Actions → Hugging Face Space → Run workflow). Locally: `docker build -t onpaper . && docker run -p 7860:7860 onpaper`.
 

@@ -16,8 +16,19 @@ on:
 concurrency: hf-space
 
 jobs:
-  deploy:
+  test:  # a failing test blocks the deploy, so a broken build never reaches the live site
     if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13", cache: pip }
+      - run: pip install -q -r requirements.txt pytest
+      - run: python -m nltk.downloader -q punkt_tab punkt stopwords
+      - run: python -m pytest -q tests/ -p no:warnings
+
+  deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

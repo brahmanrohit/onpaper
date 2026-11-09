@@ -1,0 +1,14 @@
+Abstract
+University students increasingly report poor sleep, and evening smartphone use is often blamed. This study tests whether objectively logged screen time after 10 pm predicts shorter sleep. We followed 412 undergraduates for 14 days using a phone-logging app and a wrist actigraph. Each additional hour of late-evening screen time was associated with 22 fewer minutes of sleep. Campus wellness programs should therefore target late-evening device habits rather than total daily use.
+
+Introduction
+Adequate sleep supports memory consolidation, mood regulation and academic performance (Walker, 2017). Yet more than half of undergraduates sleep under seven hours a night. Smartphones are the usual suspect, but most prior studies rely on self-reported screen time, which people estimate poorly [3]. This paper contributes the first objective, app-logged measure of late-evening phone use in this population, paired with actigraph-measured sleep.
+
+Methodology
+We recruited participants through course mailing lists at a single public university between January and March. Each participant installed a logging app that recorded every screen-on interval and wore a wrist actigraph that estimated sleep onset and duration, and at the end of the study each participant also completed a short questionnaire about caffeine intake, exercise, part-time work and the number of evening lectures they attended, which we used as covariates in the analysis. We fitted a mixed-effects model with participant as a random effect. Open-ended answers were coded with an NLP pipeline.
+
+Results
+Screen time after 10 pm averaged 94 minutes per night. Each additional hour of late-evening screen time was associated with 22 fewer minutes of sleep. The effect was strongest on nights before morning lectures. This clearly proves that smartphones always destroy sleep for every student.
+
+Conclusion
+Late-evening phone use is a meaningful and modifiable predictor of short sleep among undergraduates. Interventions might perhaps possibly help, although it may be that results could vary across campuses. Future work should test whether a simple 10 pm device curfew improves sleep duration in a randomized trial.

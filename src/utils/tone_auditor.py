@@ -32,6 +32,10 @@ LEXICONS = {
 }
 
 
+_CERTAINTY = {"clearly", "obviously", "undoubtedly", "undeniably", "proves", "proven", "without doubt",
+              "certainly", "definitely", "unquestionably", "guarantees"}
+
+
 def _count(text_padded: str, phrase: str) -> int:
     """Count phrase occurrences with word boundaries (case-insensitive)."""
     if phrase.endswith(" ") or phrase.startswith(" "):
@@ -72,7 +76,11 @@ def analyze_tone(text: str) -> dict:
     hedge_rx = re.compile(r"(?<![a-z])(" + "|".join(re.escape(h) for h in LEXICONS["Hedging"]) + r")(?![a-z])", re.I)
     for s in sentences:
         low = s.lower()
-        if overclaim_terms and any(re.search(r"(?<![a-z])" + re.escape(t) + r"(?![a-z])", low) for t in overclaim_terms):
+        hits = [t for t in overclaim_terms if re.search(r"(?<![a-z])" + re.escape(t) + r"(?![a-z])", low)]
+        # A lone quantifier ("recorded every interval", "all of the samples") is
+        # description, not a claim: flag a sentence only for a certainty word
+        # ("clearly", "proves") or 2+ stacked absolutes ("always ... every").
+        if any(t in _CERTAINTY for t in hits) or len(hits) >= 2:
             if len(examples["overclaim"]) < 8:
                 examples["overclaim"].append(s)
         if len(hedge_rx.findall(low)) >= 2 and len(examples["over_hedged"]) < 8:

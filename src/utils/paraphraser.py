@@ -24,6 +24,11 @@ MODES: Dict[str, str] = {
     "Simplify": "Rewrite the text in plain, simple language that a general audience can easily understand.",
     "Shorten": "Rewrite the text to be significantly shorter while keeping all key information.",
     "Expand": "Rewrite the text with more detail, examples, and explanation, expanding its length.",
+    "Calibrate claim": (
+        "Rewrite the text so its claims match what the evidence can support: replace absolute or "
+        "overstated wording (proves, always, never, every, clearly, destroys) with precise, appropriately "
+        "hedged academic phrasing, and remove stacked hedges. Do not add new facts or numbers."
+    ),
 }
 
 DEFAULT_MODE = "Standard rewrite"

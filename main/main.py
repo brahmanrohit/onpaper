@@ -9,7 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.utils.pdf_processor import extract_text_from_pdf, summarize_text
 from src.utils.text_analyzer import check_plagiarism, build_custom_detector
-from src.utils.health_check import run_health_check, report_markdown
+from src.utils.health_check import run_health_check, report_markdown, locate_sentence
 from src.utils.content_generator import (
     generate_section_only, generate_quick_paper, get_available_paper_types,
     edit_section, generate_section_guide,
@@ -78,6 +78,17 @@ section[data-testid="stSidebar"] .stButton button[kind="secondary"]:hover { back
 .op-bar { height: 8px; border-radius: 99px; background: #EDE4D6; overflow: hidden; margin: .25rem 0 .9rem; }
 .op-bar > div { height: 100%; border-radius: 99px; }
 .op-foot { text-align: center; font-size: .8rem; opacity: .5; margin-top: 3rem; }
+.op-draft { margin: 1.2rem 0 .3rem; padding: .6rem .75rem; border-radius: 10px; background: #FFFDF9;
+            border: 1px dashed #D9C7B0; font-size: .85rem; }
+.op-draft span { font-size: .75rem; opacity: .6; }
+.op-doc { font-family: Georgia, 'Times New Roman', serif; font-size: 1.05rem; line-height: 1.85; max-width: 46rem;
+          padding: 1.6rem 2rem; background: #FFFFFF; border: 1px solid #E8DCCB; border-radius: 6px;
+          box-shadow: 0 1px 0 #E8DCCB, 0 8px 24px rgba(90, 60, 30, .06); }
+.op-doc mark { padding: .05rem .15rem; border-radius: 3px; cursor: help; color: inherit; }
+.op-sev-critical { background: #F5C6BB; } .op-sev-major { background: #FADDBF; } .op-sev-minor { background: #FFF0B3; }
+.op-quote { font-size: .9rem; opacity: .75; border-left: 3px solid #E8DCCB; padding-left: .7rem; margin: .1rem 0 .4rem 1.6rem; }
+.op-rewrite { margin: .2rem 0 .6rem 1.6rem; padding: .6rem .8rem; border-radius: 8px; background: #EEF5EC; font-size: .92rem; }
+.op-trend { font-size: .85rem; } .op-up { color: #3F7D4A; font-weight: 700; } .op-down { color: #B5482E; font-weight: 700; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -215,21 +226,51 @@ def read_uploaded_file(uploaded_file):
         return None, f"Could not read the file: {e}"
 
 
+# ---- One draft, every tool --------------------------------------------------
+# Whatever you paste or upload into any whole-draft box becomes "your draft",
+# and every other whole-draft box opens pre-filled with it. No re-pasting.
+
+def _keep_draft(key: str):
+    """on_change callback: the box the user just edited becomes the shared draft."""
+    st.session_state["draft"] = st.session_state.get(key, "")
+
+
+def _draft_box(key: str):
+    """Call right before rendering a whole-draft text_area: sync it to the shared draft.
+    Returns the kwargs that make the box write edits back to the draft."""
+    if st.session_state.get("draft"):
+        st.session_state[key] = st.session_state["draft"]
+    return {"key": key, "on_change": _keep_draft, "args": (key,)}
+
+
+def _clear_draft():
+    st.session_state.pop("draft", None)
+    st.session_state.pop("hc_result", None)
+    st.session_state.pop("hc_history", None)
+    for k in list(st.session_state.keys()):
+        if isinstance(k, str) and k.endswith("_text") or k in ("pr_paper",):
+            st.session_state[k] = ""
+
+
 def analysis_input(key_prefix: str, label: str = "Or paste text here:"):
     """Shared 'upload PDF/TXT or paste text' input for the analysis tools.
     Returns the text (str) or None. Shows a friendly warning on upload errors."""
     col1, col2 = st.columns(2)
     with col1:
         up = st.file_uploader("Upload a PDF or TXT file:", type=["pdf", "txt"], key=f"{key_prefix}_file")
+        # A newly uploaded paper becomes the shared draft (once per file, so later
+        # edits/applied rewrites in the box aren't overwritten by the upload).
+        up_id = getattr(up, "file_id", None) or getattr(up, "name", None)
+        if up is not None and st.session_state.get(f"{key_prefix}_upid") != up_id:
+            text, err = read_uploaded_file(up)
+            if err:
+                st.warning(err)
+            else:
+                st.session_state["draft"] = text
+                st.session_state[f"{key_prefix}_upid"] = up_id
     with col2:
-        txt = st.text_area(label, height=160, key=f"{key_prefix}_text")
+        txt = st.text_area(label, height=160, **_draft_box(f"{key_prefix}_text"))
     show_counter(txt)
-    if up is not None:
-        text, err = read_uploaded_file(up)
-        if err:
-            st.warning(err)
-            return None
-        return text
     return txt if (txt and txt.strip()) else None
 
 
@@ -243,6 +284,48 @@ def render_heatstrip(sentences):
     ]
     st.markdown('<div style="line-height:2.2">' + " ".join(spans) + "</div>", unsafe_allow_html=True)
     st.caption("🟩 easy · 🟨 medium · 🟥 hard — by sentence length & word complexity (hover for details)")
+
+
+SAMPLE_DRAFT = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_draft.txt"),
+                    encoding="utf-8").read()
+
+
+def _load_sample():
+    """on_click: load the bundled sample draft and open the Health Check, already run."""
+    st.session_state["draft"] = SAMPLE_DRAFT
+    st.session_state["feature_menu"] = "Paper Health Check"
+    st.session_state["_hc_autorun"] = True
+
+
+def _find_source_for(sentence: str):
+    """on_click: open Reference Finder already searching for sources for a claim."""
+    words = [w.strip(".,;:()[]\"'") for w in sentence.split()]
+    st.session_state["ref_query"] = " ".join(w for w in words if len(w) > 3 and not w.isdigit())[:150]
+    st.session_state["feature_menu"] = "Reference Finder"
+    st.session_state["_auto_ref"] = True
+
+
+def _apply_rewrite(sentence: str, new: str):
+    """on_click: swap a flagged sentence for its rewrite in the draft and re-run the check."""
+    draft = st.session_state.get("draft", "")
+    loc = locate_sentence(draft, sentence)
+    if loc:
+        st.session_state["draft"] = draft[:loc[0]] + new.strip() + draft[loc[1]:]
+        st.session_state["_hc_autorun"] = True
+    st.session_state.get("hc_rewrites", {}).clear()
+
+
+@st.cache_data(show_spinner=False, max_entries=50)
+def cached_health_check(text, paper_type):
+    return run_health_check(text, paper_type)
+
+
+def ai_available():
+    try:
+        s = _cached_backend_status()
+        return bool(s.get("groq", {}).get("available") or s.get("ollama", {}).get("available"))
+    except Exception:
+        return False
 
 
 def _send_to_paraphraser(sentence: str):
@@ -321,6 +404,10 @@ with st.sidebar:
         for _key, _icon, _label, _blurb, _offline in _items:
             st.button(f"{_icon} {_label}", key=f"nav_{_key}", on_click=_go, args=(_key,),
                       use_container_width=True, type="primary" if _current == _key else "secondary")
+    if st.session_state.get("draft"):
+        st.markdown(f'<div class="op-draft">📄 <b>Your draft</b> · {len(st.session_state["draft"].split()):,} words'
+                    f'<br><span>already filled in on every tool</span></div>', unsafe_allow_html=True)
+        st.button("Clear draft", key="draft_clear", on_click=_clear_draft)
 
 choice = _current
 
@@ -357,16 +444,17 @@ if choice == "Home":
         '<div class="op-hero"><h1>Write the paper.<br>We\'ll sweat the details.</h1>'
         '<p>OnPaper drafts, checks, cites and polishes research writing — and most of it works '
         'offline, with no API key, on the text you already have.</p></div>', unsafe_allow_html=True)
-    cta1, cta2, _ = st.columns([1.3, 1.3, 3])
+    cta1, cta2, cta3, _ = st.columns([1.3, 1.5, 1.3, 1.6])
     cta1.button("🩺 Check my draft", type="primary", use_container_width=True,
                 on_click=_go, args=("Paper Health Check",))
-    cta2.button("📝 Start a new paper", use_container_width=True, on_click=_go, args=("Content Generation",))
+    cta2.button("✨ See it on a sample draft", use_container_width=True, on_click=_load_sample)
+    cta3.button("📝 Start a new paper", use_container_width=True, on_click=_go, args=("Content Generation",))
     for _group, _items in NAV_GROUPS:
         st.markdown(f"### {_group}")
         cols = st.columns(3)
         for i, (_key, _icon, _label, _blurb, _offline) in enumerate(_items):
             with cols[i % 3].container(border=True):
-                pill = '<span class="op-pill">offline</span>' if _offline else ""
+                pill = '<span class="op-pill">no AI key</span>' if _offline else ""
                 st.markdown(f"**{_icon} {_label}**{pill}", unsafe_allow_html=True)
                 st.caption(_blurb)
                 st.button("Open →", key=f"home_{_key}", on_click=_go, args=(_key,))
@@ -376,15 +464,24 @@ if choice == "Home":
 elif choice == "Paper Health Check":
     st.header("🩺 Paper Health Check")
     st.caption("Runs every offline analyzer on your draft at once — readability, evidence, flow, tone, "
-               "terminology, repetition, structure and abstract — and ranks what to fix first. "
-               "No AI key, no internet, nothing leaves your machine.")
+               "terminology, repetition, structure and abstract — then highlights each problem right in "
+               "your text and ranks what to fix first. No AI key needed; nothing leaves the server.")
     _ptypes = get_paper_types()
-    _hc_label = st.selectbox("Paper type (for the structure check):", [n for _, n in _ptypes], key="hc_type")
+    _pnames = [n for _, n in _ptypes]
+    tc1, tc2 = st.columns([3, 1.2])
+    _hc_label = tc1.selectbox("Paper type (for the structure check):", _pnames, key="hc_type")
+    tc2.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
+    tc2.button("✨ Try a sample draft", use_container_width=True, on_click=_load_sample, key="hc_sample")
     text = analysis_input("hc", "Or paste your draft (keep headings on their own lines):")
-    if st.button("Run health check", type="primary", key="hc_btn"):
+    _auto = st.session_state.pop("_hc_autorun", False)
+    if st.button("Run health check", type="primary", key="hc_btn") or _auto:
         if text:
             with st.spinner("Reading your draft closely…"):
-                st.session_state["hc_result"] = run_health_check(text, _ptypes[[n for _, n in _ptypes].index(_hc_label)][0])
+                _res = cached_health_check(text, _ptypes[_pnames.index(_hc_label)][0])
+            st.session_state["hc_result"] = _res
+            st.session_state["hc_rewrites"] = {}
+            if not _res.get("error"):
+                st.session_state.setdefault("hc_history", []).append(_res["overall"])
         else:
             st.warning("Please paste or upload a draft.")
             st.session_state.pop("hc_result", None)
@@ -393,6 +490,7 @@ elif choice == "Paper Health Check":
     if res and res.get("error"):
         st.warning(res["error"])
     elif res:
+        hist = st.session_state.get("hc_history", [])
         ring, side = st.columns([1, 2.4])
         with ring:
             ov = res["overall"] or 0
@@ -401,6 +499,13 @@ elif choice == "Paper Health Check":
                 f'<div><div><div class="op-serif" style="font-size:2.6rem;font-weight:700;line-height:1">{res["overall"]}</div>'
                 f'<div style="font-size:.8rem;opacity:.6">grade {res["grade"]}</div></div></div></div>',
                 unsafe_allow_html=True)
+            if len(hist) >= 2:
+                _d = hist[-1] - hist[-2]
+                _cls = "op-up" if _d > 0 else ("op-down" if _d < 0 else "")
+                st.markdown(f"<div class='op-trend' style='text-align:center;margin-top:.6rem'>"
+                            f"<span class='{_cls}'>{_d:+d}</span> since your last check<br>"
+                            f"<span style='opacity:.55'>{' → '.join(map(str, hist[-5:]))}</span></div>",
+                            unsafe_allow_html=True)
         with side:
             st.markdown(f"#### {res['note']}")
             st.caption(f"{res['word_count']} words · {len(res['dims'])} dimensions measured · "
@@ -411,19 +516,48 @@ elif choice == "Paper Health Check":
                 st.markdown(f'<div class="op-bar"><div style="width:{d["score"]}%;background:{_score_colour(d["score"])}">'
                             f'</div></div>', unsafe_allow_html=True)
 
-        st.subheader("Fix these first")
-        if res["fixes"]:
-            _sev = {"Critical": "🔴", "Major": "🟠", "Minor": "🟡"}
-            for i, (sev, _s, icon, name, msg) in enumerate(res["fixes"][:12], 1):
-                st.markdown(f"{i}. {_sev.get(sev, '⚪')} **{sev}** · {icon} {name} — {_html.escape(msg)}")
-            if len(res["fixes"]) > 12:
-                with st.expander(f"…and {len(res['fixes']) - 12} more"):
-                    for sev, _s, icon, name, msg in res["fixes"][12:]:
-                        st.markdown(f"- {_sev.get(sev, '⚪')} {icon} {name} — {_html.escape(msg)}")
-        else:
-            st.success("Nothing flagged. Lovely work.")
-
-        if res["keywords"] or res["contributions"]:
+        t_fix, t_doc, t_kw = st.tabs([f"🛠️ Fix these first ({len(res['fixes'])})", "🖍️ Your draft, annotated",
+                                      "🏷️ Keywords & contribution"])
+        with t_fix:
+            if not res["fixes"]:
+                st.success("Nothing flagged. Lovely work.")
+            else:
+                can_ai = ai_available()
+                if not can_ai:
+                    st.caption("💡 Connect an AI backend (GROQ_API_KEY) and every flagged sentence gets a "
+                               "one-click ✨ Rewrite you can apply straight to your draft.")
+                rewrites = st.session_state.setdefault("hc_rewrites", {})
+                _sev = {"Critical": "🔴", "Major": "🟠", "Minor": "🟡"}
+                top = st.container()
+                more = st.expander(f"…and {len(res['fixes']) - 12} more") if len(res["fixes"]) > 12 else None
+                for i, f in enumerate(res["fixes"]):
+                    with (top if i < 12 else more):
+                        st.markdown(f"{i + 1}. {_sev.get(f.severity, '⚪')} **{f.severity}** · {f.icon} {f.dim} — "
+                                    f"{_html.escape(f.text)}")
+                        if not f.sentence:
+                            continue
+                        st.markdown(f"<div class='op-quote'>“{_html.escape(' '.join(f.sentence.split()))}”</div>",
+                                    unsafe_allow_html=True)
+                        b1, b2, _ = st.columns([1.1, 1.3, 3])
+                        if f.action == "cite":
+                            b1.button("🔗 Find a source", key=f"hc_cite_{i}", on_click=_find_source_for,
+                                      args=(f.sentence,))
+                        elif f.action and can_ai:
+                            if b1.button("✨ Rewrite", key=f"hc_rw_{i}"):
+                                with st.spinner("Rewriting…"):
+                                    rewrites[i] = paraphrase_text(f.sentence, mode=f.action)
+                            out = rewrites.get(i)
+                            if out and out.get("error"):
+                                st.warning(out["error"])
+                            elif out:
+                                st.markdown(f"<div class='op-rewrite'>✨ {_html.escape(out['result'])}</div>",
+                                            unsafe_allow_html=True)
+                                b2.button("✅ Apply to my draft", key=f"hc_apply_{i}", on_click=_apply_rewrite,
+                                          args=(f.sentence, out["result"]))
+        with t_doc:
+            st.caption("Hover any highlight to see what's wrong.  🟥 critical · 🟧 major · 🟨 minor")
+            st.markdown(f"<div class='op-doc'>{res['annotated']}</div>", unsafe_allow_html=True)
+        with t_kw:
             k1, k2 = st.columns(2)
             with k1:
                 st.markdown("**🏷️ Suggested keywords**")
@@ -436,9 +570,13 @@ elif choice == "Paper Health Check":
                     st.caption("No explicit contribution sentence found — reviewers look for one "
                                "('We propose…', 'This paper contributes…').")
 
-        st.download_button("Download report (.md)", data=report_markdown(res),
-                           file_name="paper_health_check.md", mime="text/markdown", key="hc_dl")
-        st.caption("Want a deeper read? The 🧑‍⚖️ Peer Reviewer scores the argument itself (needs an AI backend).")
+        dl1, dl2, _ = st.columns([1, 1, 2.5])
+        _report = report_markdown(res)
+        dl1.download_button("Download report (.md)", data=_report, file_name="paper_health_check.md",
+                            mime="text/markdown", key="hc_dl")
+        dl2.download_button("Download report (.docx)", data=text_to_docx("Paper Health Check", _report),
+                            file_name="paper_health_check.docx", mime=DOCX_MIME, key="hc_docx")
+        st.caption("Want a deeper read? The 🧑‍⚖️ Peer Reviewer judges the argument itself (needs an AI backend).")
 
 elif choice == "Content Generation":
     st.header("📝 Content Generation")
@@ -722,7 +860,7 @@ elif choice == "Grammar Check":
     if not (os.getenv('GROQ_API_KEY') or os.getenv('OLLAMA_BASE_URL')):
         st.info("💡 **Tip**: Add a free Groq API key (GROQ_API_KEY) to the .env file for AI grammar checking, or run a local Ollama server. Get a free Groq key at https://console.groq.com/keys")
     
-    text = st.text_area("Enter text to check for grammar:", height=200, key="grammar_text")
+    text = st.text_area("Enter text to check for grammar:", height=200, **_draft_box("grammar_text"))
     show_counter(text)
 
     col1, col2 = st.columns([1, 1])
@@ -828,7 +966,7 @@ elif choice == "Plagiarism Detection":
     with col1:
         uploaded_file = st.file_uploader("Upload a file for plagiarism check:", type=["pdf", "txt"], key="plag_file")
     with col2:
-        input_text = st.text_area("Or paste text here:", height=150, key="plag_text")
+        input_text = st.text_area("Or paste text here:", height=150, **_draft_box("plag_text"))
         show_counter(input_text)
     threshold = st.slider("Plagiarism threshold (%):", min_value=10, max_value=100, value=70, step=1)
 
@@ -975,7 +1113,8 @@ elif choice == "Reference Finder":
     with colr2:
         num = st.slider("Number of references:", min_value=1, max_value=20, value=8, key="ref_num")
 
-    if st.button("Find References", key="ref_btn"):
+    _auto_ref = st.session_state.pop("_auto_ref", False)  # arrived via "Find a source"
+    if st.button("Find References", key="ref_btn") or _auto_ref:
         if query and query.strip():
             with st.spinner("Searching CrossRef..."):
                 result = cached_search_references(query, num)
@@ -1018,7 +1157,7 @@ elif choice == "Readability & Quality":
     with col1:
         uploaded_file = st.file_uploader("Upload a PDF or TXT file:", type=["pdf", "txt"], key="read_file")
     with col2:
-        input_text = st.text_area("Or paste text here:", height=150, key="read_text")
+        input_text = st.text_area("Or paste text here:", height=150, **_draft_box("read_text"))
         show_counter(input_text)
 
     cset1, cset2 = st.columns(2)
@@ -1235,7 +1374,7 @@ elif choice == "ZeroGPT — AI vs Human Detector":
         "and confident human writing can be falsely flagged. Never use it to accuse anyone."
     )
 
-    text = st.text_area("Paste a paragraph to analyze:", height=220, key="zgpt_text")
+    text = st.text_area("Paste a paragraph to analyze:", height=220, **_draft_box("zgpt_text"))
     show_counter(text)
 
     if st.button("Detect", key="zgpt_btn"):
@@ -1381,7 +1520,7 @@ elif choice == "Abstract Scorecard":
     st.caption("🧪 Offline. Scores an abstract on the 5 expected moves (background, gap/aim, methods, "
                "results, conclusion) plus length and readability.")
     abs_text = st.text_area("Paste your abstract (or a full paper with an 'Abstract' heading):",
-                            height=180, key="abs_text")
+                            height=180, **_draft_box("abs_text"))
     show_counter(abs_text)
     if st.button("Score abstract", key="abs_btn"):
         if abs_text and abs_text.strip():
@@ -1620,7 +1759,7 @@ elif choice == "AI Peer Reviewer":
                "it judged, and a fix. Then get a prioritized revision plan and a one-click revised draft "
                "you can re-score. Needs an AI backend.")
 
-    pr_paper = st.text_area("Paste the paper / draft to review:", height=240, key="pr_paper")
+    pr_paper = st.text_area("Paste the paper / draft to review:", height=240, **_draft_box("pr_paper"))
     show_counter(pr_paper)
 
     with st.expander("Optional: paste a reference paper (score against it instead of the general standard)"):
