@@ -1,0 +1,57 @@
+# Tests every push, and keeps the Streamlit Community Cloud app awake.
+#
+# Streamlit Cloud deploys `main` by itself and puts an app to sleep after ~12h
+# with no visitors. A plain HTTP ping doesn't count as a visit, so every 6h a real
+# headless browser opens the app and, if it fell asleep anyway, clicks "wake up".
+#
+# One-time setup (GitHub repo -> Settings -> Secrets and variables -> Actions):
+#   variable STREAMLIT_URL   your app's link, e.g. https://onpaper.streamlit.app
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 */6 * * *"
+
+jobs:
+  test:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13", cache: pip }
+      - run: pip install -q -r requirements.txt pytest
+      - run: python -m nltk.downloader -q punkt_tab punkt stopwords
+      - run: python -m pytest -q tests/ -p no:warnings
+
+  keep-awake:
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && vars.STREAMLIT_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install -q playwright && python -m playwright install --with-deps chromium > /dev/null
+      - name: Visit the app, wake it if asleep, wait until it renders
+        env:
+          URL: ${{ vars.STREAMLIT_URL }}
+        run: |
+          python - <<'EOF'
+          import os, time
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              page = p.chromium.launch().new_page()
+              page.goto(os.environ["URL"], timeout=120_000)
+              deadline = time.time() + 300
+              while time.time() < deadline:
+                  wake = page.get_by_role("button", name="get this app back up")
+                  if wake.count():
+                      print("App was asleep, waking it")
+                      wake.first.click()
+                  if any("OnPaper" in (f.content() or "") for f in page.frames):
+                      print("App is up")
+                      break
+                  time.sleep(10)
+              else:
+                  raise SystemExit("App did not come up within 5 minutes")
+          EOF
