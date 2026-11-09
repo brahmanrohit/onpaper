@@ -8,4 +8,10 @@ maxUploadSize = 10          # MB — caps uploads so a huge PDF can't OOM the fr
 gatherUsageStats = false
 
 [theme]
+# Warm paper + ink. Keep in sync between both config.toml files.
 base = "light"
+primaryColor = "#A04428"
+backgroundColor = "#FFFDF9"
+secondaryBackgroundColor = "#F5EEE4"
+textColor = "#2A2420"
+font = "sans serif"

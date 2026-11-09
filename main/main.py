@@ -9,7 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.utils.pdf_processor import extract_text_from_pdf, summarize_text
 from src.utils.text_analyzer import check_plagiarism, build_custom_detector
-from src.utils.citation_manager import suggest_citations, format_citation
+from src.utils.health_check import run_health_check, report_markdown
 from src.utils.content_generator import (
     generate_section_only, generate_quick_paper, get_available_paper_types,
     edit_section, generate_section_guide,
@@ -48,10 +48,38 @@ ensure_nltk_data()
 
 # Set page config (MUST be the first Streamlit command).
 st.set_page_config(
-    page_title="Research Paper Assistant",
-    page_icon="📚",
-    layout="wide"
+    page_title="OnPaper — from blank page to submitted paper",
+    page_icon="📜",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
+
+# Look & feel: warm paper + ink. Colours live in .streamlit/config.toml [theme];
+# this only adds the serif display face and a few component touches.
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap');
+h1, h2, h3, .op-serif { font-family: 'Fraunces', Georgia, serif !important; letter-spacing: -0.01em; }
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .1rem; }
+section[data-testid="stSidebar"] .stButton button { justify-content: flex-start; min-height: 2.1rem; border: none; padding: .25rem .6rem; }
+section[data-testid="stSidebar"] .stButton button[kind="secondary"] { background: transparent; }
+section[data-testid="stSidebar"] .stButton button[kind="secondary"]:hover { background: rgba(160, 68, 40, .08); }
+.op-brand { font-family: 'Fraunces', Georgia, serif; font-size: 1.7rem; font-weight: 700; color: #A04428; line-height: 1; }
+.op-tag { font-size: .8rem; opacity: .7; margin: .2rem 0 0; padding-bottom: 1.6rem; }
+.op-group { font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .55; margin: 1rem 0 0 .6rem; padding-bottom: .9rem; }
+.op-hero { padding: 2.2rem 2.4rem; border-radius: 18px; margin-bottom: 1.2rem;
+           background: radial-gradient(circle at 85% 20%, #F6D9C4 0, transparent 45%), linear-gradient(135deg, #FFFDF9, #F3EADD);
+           border: 1px solid #E8DCCB; }
+.op-hero h1 { font-size: 2.9rem; margin: 0; color: #2A2420; }
+.op-hero p { font-size: 1.15rem; max-width: 46rem; margin: .6rem 0 0; opacity: .8; }
+.op-pill { display: inline-block; font-size: .72rem; padding: .1rem .5rem; border-radius: 99px; background: #E4EFE3; color: #2F5A33; margin-left: .3rem; vertical-align: middle; }
+.op-ring { width: 150px; height: 150px; border-radius: 50%; display: grid; place-items: center; margin: auto; }
+.op-ring > div { width: 118px; height: 118px; border-radius: 50%; background: #FFFDF9; display: grid; place-items: center; text-align: center; }
+.op-bar { height: 8px; border-radius: 99px; background: #EDE4D6; overflow: hidden; margin: .25rem 0 .9rem; }
+.op-bar > div { height: 100%; border-radius: 99px; }
+.op-foot { text-align: center; font-size: .8rem; opacity: .5; margin-top: 3rem; }
+</style>
+""", unsafe_allow_html=True)
 
 # Secrets note: on Streamlit Community Cloud, top-level entries in the app's
 # Secrets are exported to os.environ automatically, so the os.getenv-based AI
@@ -218,19 +246,17 @@ def render_heatstrip(sentences):
 
 
 def _send_to_paraphraser(sentence: str):
-    """Seed the Paraphraser with a sentence and switch to that feature."""
+    """on_click callback: seed the Paraphraser with a sentence and switch to it.
+
+    Must be a callback, not `if st.button(...)`: these buttons live inside the
+    Analyze results, which aren't re-rendered on the click's rerun, so an inline
+    check never fires. Callbacks run before the rerun, so this always works."""
     st.session_state["para_text"] = sentence
     st.session_state["para_mode"] = "Improve clarity"
-    st.session_state["_goto_para"] = True
-    st.rerun()
+    st.session_state["feature_menu"] = "Paraphraser"
 
 
 # --- Cached wrappers for the slow / network-bound calls (Tier 4) -------------
-@st.cache_data(ttl=3600, show_spinner=False)
-def cached_suggest_citations(query, rows):
-    return suggest_citations(query, rows=rows)
-
-
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_search_references(query, rows):
     return search_references(query, rows=rows)
@@ -251,26 +277,52 @@ def cached_check_plagiarism(text, threshold):
     return check_plagiarism(text, threshold)
 
 
-# Main title
-st.title("📚 Research Paper Assistant")
+# ---- Navigation: features grouped by the stage of writing a paper ----------
+# (feature key, icon, short label, one-line blurb, works without an AI key?)
+NAV_GROUPS = [
+    ("Check", [
+        ("Paper Health Check", "🩺", "Paper Health Check", "Every offline check in one click — a scored report card and a ranked fix list.", True),
+        ("Readability & Quality", "📈", "Readability", "Grade level, passive voice, long sentences, and a heat-strip of the hard parts.", True),
+        ("Plagiarism Detection", "🔍", "Plagiarism", "Sentence-level similarity against a corpus — or against your own sources.", True),
+        ("ZeroGPT — Writing Analysis Suite", "🧪", "Writing Suite", "AI-text signal, flow, citation density, tone, acronyms, repetition, keywords.", True),
+        ("AI Peer Reviewer", "🧑‍⚖️", "Peer Reviewer", "A strict reviewer's rubric score, a revision plan, and a revised draft to re-score.", False),
+    ]),
+    ("Write", [
+        ("Content Generation", "📝", "Generate", "Full papers (.docx), single sections, or a section-by-section writing guide.", False),
+        ("Paraphraser", "🔄", "Paraphraser", "Rewrite for clarity, tone, or originality in seven modes.", False),
+        ("Grammar Check", "✍️", "Grammar", "Grammar, spelling and style fixes with a change-by-change diff.", False),
+        ("AI Prompt Generator", "✨", "Prompt Generator", "Turn a rough idea into a clean, structured LLM prompt.", False),
+    ]),
+    ("Cite", [
+        ("Reference Finder", "🔗", "Find References", "Real papers with DOIs from CrossRef, formatted in APA, IEEE or MLA.", True),
+        ("Verify References", "🔎", "Verify References", "Catch fabricated or hallucinated citations before a reviewer does.", True),
+    ]),
+    ("Read", [
+        ("Chat with your Paper", "💬", "Chat with a Paper", "Ask questions of any PDF, answered from its own passages.", True),
+        ("Paper Analysis", "📄", "Summarize", "Extract the text of a PDF and get a quick extractive summary.", True),
+    ]),
+]
 
-# A "Send to Paraphraser" handoff from another feature: switch the menu BEFORE
-# the selectbox is instantiated (you can't set a widget's value after it renders).
-if st.session_state.pop("_goto_para", False):
-    st.session_state["feature_menu"] = "Paraphraser"
-    st.session_state["upcoming_feature"] = "— None —"
 
-# Sidebar navigation
-menu = ["Content Generation", "Paper Analysis", "Citation Assistant", "Reference Finder", "Verify References", "Grammar Check", "Paraphraser", "Plagiarism Detection", "Readability & Quality", "Chat with your Paper"]
-choice = st.sidebar.selectbox("Select a Feature", menu, key="feature_menu")
+def _go(feature):
+    st.session_state["feature_menu"] = feature
 
-# Upcoming / experimental features (beta). Selecting one overrides the main menu.
-st.sidebar.markdown("---")
-st.sidebar.caption("🧪 Upcoming Features (Beta)")
-upcoming_menu = ["— None —", "ZeroGPT — Writing Analysis Suite", "AI Prompt Generator", "AI Peer Reviewer"]
-upcoming = st.sidebar.selectbox("Try an experimental feature:", upcoming_menu, key="upcoming_feature")
-if upcoming != "— None —":
-    choice = upcoming
+
+st.session_state.setdefault("feature_menu", "Home")
+_current = st.session_state["feature_menu"]
+
+with st.sidebar:
+    st.markdown('<div class="op-brand">OnPaper</div><div class="op-tag">from blank page to submitted paper</div>',
+                unsafe_allow_html=True)
+    st.button("🏠 Home", key="nav_Home", on_click=_go, args=("Home",), use_container_width=True,
+              type="primary" if _current == "Home" else "secondary")
+    for _group, _items in NAV_GROUPS:
+        st.markdown(f'<div class="op-group">{_group}</div>', unsafe_allow_html=True)
+        for _key, _icon, _label, _blurb, _offline in _items:
+            st.button(f"{_icon} {_label}", key=f"nav_{_key}", on_click=_go, args=(_key,),
+                      use_container_width=True, type="primary" if _current == _key else "secondary")
+
+choice = _current
 
 # The ZeroGPT suite bundles the AI detector + the offline analysis tools behind a
 # tab-style selector. It remaps `choice` to the chosen tool so the existing
@@ -296,8 +348,99 @@ if choice == "ZeroGPT — Writing Analysis Suite":
 # Sidebar: live AI backend status (Tier 1).
 render_backend_status()
 
-# Feature logic (placeholders)
-if choice == "Content Generation":
+def _score_colour(s):
+    return "#3F7D4A" if s >= 80 else ("#C08A2B" if s >= 60 else "#B5482E")
+
+
+if choice == "Home":
+    st.markdown(
+        '<div class="op-hero"><h1>Write the paper.<br>We\'ll sweat the details.</h1>'
+        '<p>OnPaper drafts, checks, cites and polishes research writing — and most of it works '
+        'offline, with no API key, on the text you already have.</p></div>', unsafe_allow_html=True)
+    cta1, cta2, _ = st.columns([1.3, 1.3, 3])
+    cta1.button("🩺 Check my draft", type="primary", use_container_width=True,
+                on_click=_go, args=("Paper Health Check",))
+    cta2.button("📝 Start a new paper", use_container_width=True, on_click=_go, args=("Content Generation",))
+    for _group, _items in NAV_GROUPS:
+        st.markdown(f"### {_group}")
+        cols = st.columns(3)
+        for i, (_key, _icon, _label, _blurb, _offline) in enumerate(_items):
+            with cols[i % 3].container(border=True):
+                pill = '<span class="op-pill">offline</span>' if _offline else ""
+                st.markdown(f"**{_icon} {_label}**{pill}", unsafe_allow_html=True)
+                st.caption(_blurb)
+                st.button("Open →", key=f"home_{_key}", on_click=_go, args=(_key,))
+    st.markdown('<div class="op-foot">OnPaper · made with care for everyone staring at a blank page</div>',
+                unsafe_allow_html=True)
+
+elif choice == "Paper Health Check":
+    st.header("🩺 Paper Health Check")
+    st.caption("Runs every offline analyzer on your draft at once — readability, evidence, flow, tone, "
+               "terminology, repetition, structure and abstract — and ranks what to fix first. "
+               "No AI key, no internet, nothing leaves your machine.")
+    _ptypes = get_paper_types()
+    _hc_label = st.selectbox("Paper type (for the structure check):", [n for _, n in _ptypes], key="hc_type")
+    text = analysis_input("hc", "Or paste your draft (keep headings on their own lines):")
+    if st.button("Run health check", type="primary", key="hc_btn"):
+        if text:
+            with st.spinner("Reading your draft closely…"):
+                st.session_state["hc_result"] = run_health_check(text, _ptypes[[n for _, n in _ptypes].index(_hc_label)][0])
+        else:
+            st.warning("Please paste or upload a draft.")
+            st.session_state.pop("hc_result", None)
+
+    res = st.session_state.get("hc_result")
+    if res and res.get("error"):
+        st.warning(res["error"])
+    elif res:
+        ring, side = st.columns([1, 2.4])
+        with ring:
+            ov = res["overall"] or 0
+            st.markdown(
+                f'<div class="op-ring" style="background:conic-gradient({_score_colour(ov)} {ov * 3.6}deg,#EDE4D6 0)">'
+                f'<div><div><div class="op-serif" style="font-size:2.6rem;font-weight:700;line-height:1">{res["overall"]}</div>'
+                f'<div style="font-size:.8rem;opacity:.6">grade {res["grade"]}</div></div></div></div>',
+                unsafe_allow_html=True)
+        with side:
+            st.markdown(f"#### {res['note']}")
+            st.caption(f"{res['word_count']} words · {len(res['dims'])} dimensions measured · "
+                       f"{len(res['fixes'])} item(s) flagged")
+            for d in res["dims"]:
+                st.markdown(f"{d['icon']} **{d['name']}** — {d['score']}/100 · "
+                            f"<span style='opacity:.65'>{d['summary']}</span>", unsafe_allow_html=True)
+                st.markdown(f'<div class="op-bar"><div style="width:{d["score"]}%;background:{_score_colour(d["score"])}">'
+                            f'</div></div>', unsafe_allow_html=True)
+
+        st.subheader("Fix these first")
+        if res["fixes"]:
+            _sev = {"Critical": "🔴", "Major": "🟠", "Minor": "🟡"}
+            for i, (sev, _s, icon, name, msg) in enumerate(res["fixes"][:12], 1):
+                st.markdown(f"{i}. {_sev.get(sev, '⚪')} **{sev}** · {icon} {name} — {_html.escape(msg)}")
+            if len(res["fixes"]) > 12:
+                with st.expander(f"…and {len(res['fixes']) - 12} more"):
+                    for sev, _s, icon, name, msg in res["fixes"][12:]:
+                        st.markdown(f"- {_sev.get(sev, '⚪')} {icon} {name} — {_html.escape(msg)}")
+        else:
+            st.success("Nothing flagged. Lovely work.")
+
+        if res["keywords"] or res["contributions"]:
+            k1, k2 = st.columns(2)
+            with k1:
+                st.markdown("**🏷️ Suggested keywords**")
+                st.markdown("  ".join(f"`{k}`" for k in res["keywords"]) or "—")
+            with k2:
+                st.markdown("**💡 Your contribution, as the draft states it**")
+                for c in res["contributions"][:3]:
+                    st.markdown(f"> {c}")
+                if not res["contributions"]:
+                    st.caption("No explicit contribution sentence found — reviewers look for one "
+                               "('We propose…', 'This paper contributes…').")
+
+        st.download_button("Download report (.md)", data=report_markdown(res),
+                           file_name="paper_health_check.md", mime="text/markdown", key="hc_dl")
+        st.caption("Want a deeper read? The 🧑‍⚖️ Peer Reviewer scores the argument itself (needs an AI backend).")
+
+elif choice == "Content Generation":
     st.header("📝 Content Generation")
     # Remember the topic across all four tabs (Tier 1).
     for _k in _TOPIC_KEYS:
@@ -572,33 +715,6 @@ elif choice == "Paper Analysis":
                 )
             else:
                 st.warning("Please paste some text.")
-elif choice == "Citation Assistant":
-    st.header("📚 Citation Assistant")
-    st.caption("Finds real papers (with DOIs) via the free CrossRef API and formats them in APA/IEEE/MLA.")
-    query = st.text_input("Enter your research query or topic for citations:")
-    style = st.selectbox("Select citation style:", ["APA", "IEEE", "MLA"])
-    num_citations = st.slider("Number of citations:", min_value=1, max_value=8, value=3)
-    if st.button("Generate Citations"):
-        if query:
-            with st.spinner("Searching CrossRef for real references..."):
-                citations = cached_suggest_citations(query, num_citations)
-            if citations:
-                st.subheader("Suggested Citations:")
-                for i, paper in enumerate(citations[:num_citations], 1):
-                    citation_text = format_citation(paper, style=style)
-                    st.write(f"{i}. {citation_text}")
-                # Download citations
-                citations_txt = '\n'.join([format_citation(p, style=style) for p in citations[:num_citations]])
-                st.download_button(
-                    label="Download Citations as TXT",
-                    data=citations_txt,
-                    file_name="citations.txt",
-                    mime="text/plain"
-                )
-            else:
-                st.warning("No references found for that query. Try different or broader keywords.")
-        else:
-            st.warning("Please enter a query or topic.")
 elif choice == "Grammar Check":
     st.header("✍️ Grammar Check")
     
@@ -966,15 +1082,15 @@ elif choice == "Readability & Quality":
                     with st.expander(f"⚠️ {result['long_sentence_count']} long sentence(s) — consider splitting"):
                         for idx, item in enumerate(result["long_sentences"]):
                             st.markdown(f"**({item['words']} words)** {item['sentence']}")
-                            if st.button("✏️ Send to Paraphraser", key=f"para_long_{idx}"):
-                                _send_to_paraphraser(item["sentence"])
+                            st.button("✏️ Send to Paraphraser", key=f"para_long_{idx}",
+                                      on_click=_send_to_paraphraser, args=(item["sentence"],))
 
                 if result["passive_sentences"]:
                     with st.expander(f"🔎 {result['passive_count']} possible passive-voice sentence(s)"):
                         for idx, sent in enumerate(result["passive_sentences"]):
                             st.markdown(f"- {sent}")
-                            if st.button("✏️ Send to Paraphraser", key=f"para_pass_{idx}"):
-                                _send_to_paraphraser(sent)
+                            st.button("✏️ Send to Paraphraser", key=f"para_pass_{idx}",
+                                      on_click=_send_to_paraphraser, args=(sent,))
 
                 # Readability heat-strip (per-sentence difficulty).
                 with st.expander("🌡️ Readability heat-strip (where the hard sentences are)"):

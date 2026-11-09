@@ -23,11 +23,14 @@ This is the **single source of truth** for the project. It documents the real, c
 
 ## Features
 
+The app opens on a **Home** page; the sidebar groups every tool by stage — **Check · Write · Cite · Read**.
+
+
 | Feature | What it does | Powered by |
 |---------|--------------|------------|
 | **Content Generation** | Generate a full paper (Word `.docx`), a quick paper (TXT), a single section, or a section-wise guide. Supports 10 paper types. | Groq/Ollama + templates |
 | **Paper Analysis** | Extract text from an uploaded PDF/TXT and produce a TF-IDF summary. | PyPDF2 + scikit-learn |
-| **Citation Assistant** | Suggest citations and format them in APA / IEEE / MLA. | *(currently mock data)* |
+| **Paper Health Check** | One click runs every offline analyzer (readability, evidence, flow, tone, terminology, repetition, structure, abstract) and returns a 0–100 report card, a ranked fix list, and a Markdown report. | Native (no key) — `src/utils/health_check.py` |
 | **Grammar Check** | Detect & correct grammar/spelling/style with change tracking and a side-by-side diff. | Gemini (with regex fallback) |
 | **Plagiarism Detection** | Compare text against a reference corpus using TF-IDF + cosine similarity, at document and sentence level. | scikit-learn |
 | **Reference Finder** | Find **real** academic papers with DOIs via the free CrossRef API; format in APA/IEEE/MLA. | CrossRef (no key) |
@@ -90,7 +93,8 @@ onpaperfixed/
 │   │   ├── default_paper_generator.py# Richer generator → builds the Word .docx (+ images)
 │   │   ├── text_analyzer.py          # PlagiarismDetector (TF-IDF + cosine, batched)
 │   │   ├── grammar_checker.py        # Gemini JSON grammar correction + regex fallback
-│   │   ├── citation_manager.py       # Citation suggestions + APA/IEEE/MLA formatting (mock)
+│   │   ├── citation_manager.py       # Thin CrossRef wrapper (kept for API compat; UI uses reference_finder)
+│   │   ├── health_check.py           # Paper Health Check: runs all offline analyzers, scores, ranks fixes
 │   │   ├── pdf_processor.py          # PDF text extraction + TF-IDF summarization
 │   │   ├── paper_type_detector.py    # Keyword-based paper-type detection + per-type guidance
 │   │   ├── topic_type_predictor.py   # Loads the pickled topic→type classifier
@@ -278,8 +282,6 @@ of pure TF-IDF.
 
 ## Known Issues & Limitations
 
-- **Citations are mock data** — `citation_manager.suggest_citations()` returns random sample
-  papers, not real lookups. Wire it to a real source (CrossRef / Semantic Scholar) for production.
 - **Plagiarism corpus is generic** — the score reflects similarity to the 93 bundled academic
   papers, not the web. There is no UI to add your own reference documents yet.
 - **No database / no auth / single-user** — state is files + pickles; models load at startup.

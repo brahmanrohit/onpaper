@@ -9,4 +9,10 @@ maxUploadSize = 10          # MB — keep in sync with the root .streamlit/confi
 gatherUsageStats = false
 
 [theme]
+# Warm paper + ink. Keep in sync between both config.toml files.
 base = "light"
+primaryColor = "#A04428"
+backgroundColor = "#FFFDF9"
+secondaryBackgroundColor = "#F5EEE4"
+textColor = "#2A2420"
+font = "sans serif"
