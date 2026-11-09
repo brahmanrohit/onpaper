@@ -219,12 +219,12 @@ class PlagiarismDetector:
         # Check the user's threshold FIRST so the message never contradicts the
         # is_plagiarized flag or the UI band (which both use score > threshold*100).
         if score > threshold * 100:
-            return "🚨 High plagiarism risk detected. Significant similarity with reference documents."
+            return "High plagiarism risk detected. Significant similarity with reference documents."
         if score < 30:
-            return "✅ Low plagiarism risk. The text appears to be original."
+            return "Low plagiarism risk. The text appears to be original."
         if score < 60:
-            return "⚠️ Moderate similarity detected. Review for potential paraphrasing."
-        return "⚠️ Notable similarity detected, but below your threshold. Consider reviewing."
+            return "Moderate similarity detected. Review for potential paraphrasing."
+        return "Notable similarity detected, but below your threshold. Consider reviewing."
     
     def save_model(self):
         """Save the trained model to disk."""

@@ -171,11 +171,11 @@ Focus on:
         total = statistics['total_errors']
         
         if total == 0:
-            return "✅ No grammar or spelling errors found!"
+            return "No grammar or spelling errors found!"
         elif total == 1:
-            return "⚠️ Found 1 error that has been corrected."
+            return "Found 1 error that has been corrected."
         else:
-            return f"⚠️ Found {total} errors that have been corrected."
+            return f"Found {total} errors that have been corrected."
     
     def _fallback_check(self, text: str, error_msg: str) -> Dict:
         """Fallback grammar checking when API is unavailable"""

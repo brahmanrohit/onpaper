@@ -32,7 +32,7 @@ GRADE_LOW, GRADE_HIGH = 12, 16
 # action: what the UI can offer — "cite" (find a source), a Paraphraser mode name
 #         (one-click rewrite), or None.
 Issue = namedtuple("Issue", "severity text sentence action", defaults=(None, None))
-Fix = namedtuple("Fix", "severity dim_score icon dim text sentence action")
+Fix = namedtuple("Fix", "severity dim_score dim text sentence action")
 
 
 def _clamp(x):
@@ -47,7 +47,7 @@ def score_dimensions(raw):
     """Turn raw analyzer outputs into dimensions. Pure function (easy to test).
 
     raw: {"read", "claim", "coh", "tone", "term", "rep", "struct", "abs"} -> analyzer dicts.
-    Returns a list of {name, icon, score, summary, issues:[Issue]}; an analyzer
+    Returns a list of {name, score, summary, issues:[Issue]}; an analyzer
     that errored or doesn't apply is simply left out (and so not averaged in).
     """
     dims = []
@@ -62,7 +62,7 @@ def score_dimensions(raw):
         if dist:
             issues.insert(0, Issue("Major" if dist > 4 else "Minor",
                                    f"Grade level {g} is outside the academic sweet spot ({GRADE_LOW}-{GRADE_HIGH})."))
-        dims.append(dict(name="Readability", icon="📖",
+        dims.append(dict(name="Readability",
                          score=_clamp(100 - 8 * dist - 3 * r["long_sentence_count"]),
                          summary=f"Grade {g} · {r['flesch_reading_ease_label']} · {r['long_sentence_count']} long sentence(s)",
                          issues=issues))
@@ -77,14 +77,14 @@ def score_dimensions(raw):
                   for x in c["uncited_claims"][:6]]
         if no_cites:
             issues.insert(0, Issue("Critical", "No in-text citations found anywhere in the draft."))
-        dims.append(dict(name="Evidence & Citations", icon="📑", score=s,
+        dims.append(dict(name="Evidence & Citations", score=s,
                          summary=f"{c['citation_markers']} citation(s) · {c['uncited_count']} uncited claim(s)",
                          issues=issues))
 
     h = raw.get("coh")
     if _ok(h) and h.get("pairs"):
         weak = [p for p in h["pairs"] if p["weak"]]
-        dims.append(dict(name="Flow", icon="🔀",
+        dims.append(dict(name="Flow",
                          score=_clamp(100 * (1 - len(weak) / len(h["pairs"]))),
                          summary=f"{h['paragraphs']} paragraphs · {len(weak)} abrupt jump(s)",
                          issues=[Issue("Minor", f"Abrupt jump from ¶{p['from']} to ¶{p['to']} — add a transition "
@@ -93,7 +93,7 @@ def score_dimensions(raw):
     t = raw.get("tone")
     if _ok(t):
         over, hedge = t["examples"]["overclaim"], t["examples"]["over_hedged"]
-        dims.append(dict(name="Tone", icon="🎚️", score=_clamp(100 - 10 * (len(over) + len(hedge))),
+        dims.append(dict(name="Tone", score=_clamp(100 - 10 * (len(over) + len(hedge))),
                          summary=f"{len(over)} overclaim(s) · {len(hedge)} over-hedged sentence(s)",
                          issues=[Issue("Major", "Overclaim — absolute wording a reviewer will challenge.", x, "Calibrate claim")
                                  for x in over[:4]]
@@ -102,28 +102,28 @@ def score_dimensions(raw):
     m = raw.get("term")
     if _ok(m):
         n = len(m["acronym_issues"]) + len(m["term_variants"])
-        dims.append(dict(name="Terminology", icon="🔤", score=_clamp(100 - 8 * n),
+        dims.append(dict(name="Terminology", score=_clamp(100 - 8 * n),
                          summary=f"{len(m['acronym_issues'])} acronym issue(s) · {len(m['term_variants'])} spelling variant(s)",
                          issues=[Issue("Minor", f"{a['acronym']}: {a['issue']}") for a in m["acronym_issues"][:4]]
                          + [Issue("Minor", "Inconsistent spelling: " + ", ".join(v["forms"])) for v in m["term_variants"][:3]]))
 
     p = raw.get("rep")
     if _ok(p):
-        dims.append(dict(name="Originality of phrasing", icon="♻️", score=_clamp(100 - 15 * p["pair_count"]),
+        dims.append(dict(name="Originality of phrasing", score=_clamp(100 - 15 * p["pair_count"]),
                          summary=f"{p['pair_count']} near-duplicate sentence pair(s)",
                          issues=[Issue("Minor", f"Repeats sentence {x['i']} almost word for word — cut or merge.",
                                        x["b"], "Standard rewrite") for x in p["pairs"][:3]]))
 
     st_ = raw.get("struct")
     if _ok(st_):
-        dims.append(dict(name="Structure", icon="🧱", score=_clamp(st_["completeness_pct"]),
+        dims.append(dict(name="Structure", score=_clamp(st_["completeness_pct"]),
                          summary=f"{st_['completeness_pct']}% of expected sections present",
                          issues=[Issue("Critical" if sec in ("Abstract", "Introduction", "Conclusion") else "Major",
                                        f"Missing section: {sec}") for sec in st_["missing"]]))
 
     a = raw.get("abs")
     if _ok(a) and a.get("had_abstract_heading"):
-        dims.append(dict(name="Abstract", icon="📋", score=_clamp(a["score"]),
+        dims.append(dict(name="Abstract", score=_clamp(a["score"]),
                          summary=f"{a['moves_present']}/{a['moves_total']} expected moves · length {a['length_status']}",
                          issues=[Issue("Major", f"Abstract is missing the '{mv}' move.") for mv, ok in a["moves"].items() if not ok]
                          + [Issue("Minor", tip) for tip in a["tips"][:2]]))
@@ -136,8 +136,9 @@ _SEV_RANK = {"Critical": 0, "Major": 1, "Minor": 2}
 def summarize(dims):
     """Overall score + every issue as a Fix, ranked by severity, then by how weak its dimension is."""
     overall = _clamp(sum(d["score"] for d in dims) / len(dims)) if dims else None
-    fixes = [Fix(i.severity, d["score"], d["icon"], d["name"], i.text, i.sentence, i.action)
-             for d in dims for i in d["issues"]]
+    # dict.fromkeys de-duplicates: a sentence repeated in the draft is one fix, not two.
+    fixes = list(dict.fromkeys(Fix(i.severity, d["score"], d["name"], i.text, i.sentence, i.action)
+                               for d in dims for i in d["issues"]))
     fixes.sort(key=lambda f: (_SEV_RANK.get(f.severity, 3), f.dim_score))
     return overall, fixes
 
@@ -224,7 +225,7 @@ def report_markdown(res):
     """A downloadable Markdown report of a health check."""
     lines = [f"# Paper Health Check — {res['overall']}/100 (grade {res['grade']})", "", f"_{res['note']}_", "",
              "## Scores", ""]
-    lines += [f"- {d['icon']} **{d['name']}**: {d['score']}/100 — {d['summary']}" for d in res["dims"]]
+    lines += [f"- **{d['name']}**: {d['score']}/100 — {d['summary']}" for d in res["dims"]]
     lines += ["", "## Fix these first", ""]
     for i, f in enumerate(res["fixes"], 1):
         lines.append(f"{i}. **[{f.severity}] {f.dim}** — {f.text}")

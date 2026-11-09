@@ -49,7 +49,6 @@ ensure_nltk_data()
 # Set page config (MUST be the first Streamlit command).
 st.set_page_config(
     page_title="OnPaper — from blank page to submitted paper",
-    page_icon="📜",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -106,7 +105,7 @@ def get_topic_predictor():
 
 def suggest_paper_type(topic: str, key: str):
     """Render a button that predicts the best paper type for a topic."""
-    if topic and st.button("🔮 Suggest paper type", key=key):
+    if topic and st.button("Suggest paper type", key=key):
         try:
             pred, confidence = get_topic_predictor().predict(topic)
             conf_txt = f" ({confidence * 100:.0f}% confidence)" if confidence else ""
@@ -134,12 +133,12 @@ def render_backend_status():
     st.sidebar.markdown("---")
     if groq.get("available") or ollama.get("available"):
         if groq.get("available"):
-            st.sidebar.success(f"🟢 AI: Groq — {groq.get('model', 'ready')}")
+            st.sidebar.success(f"AI: Groq — {groq.get('model', 'ready')}")
         if ollama.get("available"):
             models = ollama.get("models") or []
-            st.sidebar.success(f"🟢 AI: Ollama — {(models[0] if models else 'local')}")
+            st.sidebar.success(f"AI: Ollama — {(models[0] if models else 'local')}")
     else:
-        st.sidebar.error("🔴 No AI backend connected")
+        st.sidebar.error("No AI backend connected")
         st.sidebar.caption(
             "Generation, grammar & paraphrase are disabled. Set `GROQ_API_KEY` in .env "
             "(console.groq.com/keys) or run Ollama. Plagiarism, readability & references "
@@ -152,9 +151,9 @@ def show_counter(text: str):
     n_words = len((text or "").split())
     n_chars = len(text or "")
     if n_words:
-        st.caption(f"📊 {n_words} words · {n_chars} characters · ~{max(1, round(n_words / 200))} min read")
+        st.caption(f"{n_words} words · {n_chars} characters · ~{max(1, round(n_words / 200))} min read")
     else:
-        st.caption("📊 0 words · 0 characters")
+        st.caption("0 words · 0 characters")
 
 
 def section_word_badge(word_count: int, word_limit: str):
@@ -164,8 +163,8 @@ def section_word_badge(word_count: int, word_limit: str):
     except (ValueError, AttributeError):
         return
     res = compare_to_target(word_count, low, high)
-    icon = {"ok": "🟢", "under": "🟡", "over": "🟠"}.get(res["status"], "⚪")
-    st.caption(f"{icon} {word_count} words · target {low}–{high} ({res['message']})")
+    tag = {"ok": ":green[on target]", "under": ":orange[under]", "over": ":orange[over]"}.get(res["status"], "")
+    st.caption(f"{word_count} words · target {low}–{high} · {tag} ({res['message']})")
 
 
 # Shared "remember the topic across the four Content-Generation tabs" state.
@@ -283,7 +282,9 @@ def render_heatstrip(sentences):
         for s in sentences
     ]
     st.markdown('<div style="line-height:2.2">' + " ".join(spans) + "</div>", unsafe_allow_html=True)
-    st.caption("🟩 easy · 🟨 medium · 🟥 hard — by sentence length & word complexity (hover for details)")
+    st.markdown("<span style='font-size:.85rem;opacity:.75'><span style='background:#d7f5dd'>easy</span> · "
+                "<span style='background:#fff3cd'>medium</span> · <span style='background:#f8d7da'>hard</span>"
+                " — by sentence length & word complexity (hover for details)</span>", unsafe_allow_html=True)
 
 
 SAMPLE_DRAFT = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_draft.txt"),
@@ -361,28 +362,28 @@ def cached_check_plagiarism(text, threshold):
 
 
 # ---- Navigation: features grouped by the stage of writing a paper ----------
-# (feature key, icon, short label, one-line blurb, works without an AI key?)
+# (feature key, short label, one-line blurb, works without an AI key?)
 NAV_GROUPS = [
     ("Check", [
-        ("Paper Health Check", "🩺", "Paper Health Check", "Every offline check in one click — a scored report card and a ranked fix list.", True),
-        ("Readability & Quality", "📈", "Readability", "Grade level, passive voice, long sentences, and a heat-strip of the hard parts.", True),
-        ("Plagiarism Detection", "🔍", "Plagiarism", "Sentence-level similarity against a corpus — or against your own sources.", True),
-        ("ZeroGPT — Writing Analysis Suite", "🧪", "Writing Suite", "AI-text signal, flow, citation density, tone, acronyms, repetition, keywords.", True),
-        ("AI Peer Reviewer", "🧑‍⚖️", "Peer Reviewer", "A strict reviewer's rubric score, a revision plan, and a revised draft to re-score.", False),
+        ("Paper Health Check", "Paper Health Check", "Every offline check in one click — a scored report card and a ranked fix list.", True),
+        ("Readability & Quality", "Readability", "Grade level, passive voice, long sentences, and a heat-strip of the hard parts.", True),
+        ("Plagiarism Detection", "Plagiarism", "Sentence-level similarity against a corpus — or against your own sources.", True),
+        ("ZeroGPT — Writing Analysis Suite", "Writing Suite", "AI-text signal, flow, citation density, tone, acronyms, repetition, keywords.", True),
+        ("AI Peer Reviewer", "Peer Reviewer", "A strict reviewer's rubric score, a revision plan, and a revised draft to re-score.", False),
     ]),
     ("Write", [
-        ("Content Generation", "📝", "Generate", "Full papers (.docx), single sections, or a section-by-section writing guide.", False),
-        ("Paraphraser", "🔄", "Paraphraser", "Rewrite for clarity, tone, or originality in seven modes.", False),
-        ("Grammar Check", "✍️", "Grammar", "Grammar, spelling and style fixes with a change-by-change diff.", False),
-        ("AI Prompt Generator", "✨", "Prompt Generator", "Turn a rough idea into a clean, structured LLM prompt.", False),
+        ("Content Generation", "Generate", "Full papers (.docx), single sections, or a section-by-section writing guide.", False),
+        ("Paraphraser", "Paraphraser", "Rewrite for clarity, tone, or originality in seven modes.", False),
+        ("Grammar Check", "Grammar", "Grammar, spelling and style fixes with a change-by-change diff.", False),
+        ("AI Prompt Generator", "Prompt Generator", "Turn a rough idea into a clean, structured LLM prompt.", False),
     ]),
     ("Cite", [
-        ("Reference Finder", "🔗", "Find References", "Real papers with DOIs from CrossRef, formatted in APA, IEEE or MLA.", True),
-        ("Verify References", "🔎", "Verify References", "Catch fabricated or hallucinated citations before a reviewer does.", True),
+        ("Reference Finder", "Find References", "Real papers with DOIs from CrossRef, formatted in APA, IEEE or MLA.", True),
+        ("Verify References", "Verify References", "Catch fabricated or hallucinated citations before a reviewer does.", True),
     ]),
     ("Read", [
-        ("Chat with your Paper", "💬", "Chat with a Paper", "Ask questions of any PDF, answered from its own passages.", True),
-        ("Paper Analysis", "📄", "Summarize", "Extract the text of a PDF and get a quick extractive summary.", True),
+        ("Chat with your Paper", "Chat with a Paper", "Ask questions of any PDF, answered from its own passages.", True),
+        ("Paper Analysis", "Summarize", "Extract the text of a PDF and get a quick extractive summary.", True),
     ]),
 ]
 
@@ -397,15 +398,15 @@ _current = st.session_state["feature_menu"]
 with st.sidebar:
     st.markdown('<div class="op-brand">OnPaper</div><div class="op-tag">from blank page to submitted paper</div>',
                 unsafe_allow_html=True)
-    st.button("🏠 Home", key="nav_Home", on_click=_go, args=("Home",), use_container_width=True,
+    st.button("Home", key="nav_Home", on_click=_go, args=("Home",), use_container_width=True,
               type="primary" if _current == "Home" else "secondary")
     for _group, _items in NAV_GROUPS:
         st.markdown(f'<div class="op-group">{_group}</div>', unsafe_allow_html=True)
-        for _key, _icon, _label, _blurb, _offline in _items:
-            st.button(f"{_icon} {_label}", key=f"nav_{_key}", on_click=_go, args=(_key,),
+        for _key, _label, _blurb, _offline in _items:
+            st.button(_label, key=f"nav_{_key}", on_click=_go, args=(_key,),
                       use_container_width=True, type="primary" if _current == _key else "secondary")
     if st.session_state.get("draft"):
-        st.markdown(f'<div class="op-draft">📄 <b>Your draft</b> · {len(st.session_state["draft"].split()):,} words'
+        st.markdown(f'<div class="op-draft"><b>Your draft</b> · {len(st.session_state["draft"].split()):,} words'
                     f'<br><span>already filled in on every tool</span></div>', unsafe_allow_html=True)
         st.button("Clear draft", key="draft_clear", on_click=_clear_draft)
 
@@ -415,18 +416,18 @@ choice = _current
 # tab-style selector. It remaps `choice` to the chosen tool so the existing
 # feature blocks below render it (no duplication of their logic).
 if choice == "ZeroGPT — Writing Analysis Suite":
-    st.markdown("### 🧪 ZeroGPT — Writing Analysis Suite")
+    st.markdown("### ZeroGPT — Writing Analysis Suite")
     st.caption("AI detector plus offline writing-analysis tools — pick one:")
     _SUITE_TOOLS = {
-        "🤖 AI Detector": "ZeroGPT — AI vs Human Detector",
-        "🔀 Flow & Cohesion": "Flow & Cohesion Map",
-        "📑 Citation Density": "Citation Density & Uncited Claims",
-        "✅ Section Completeness": "Section Completeness Check",
-        "📋 Abstract Scorecard": "Abstract Scorecard",
-        "🎚️ Tone Auditor": "Tone Auditor (Hedging/Overclaiming)",
-        "🔤 Terminology": "Terminology & Acronym Check",
-        "♻️ Repetition": "Repetition / Self-Overlap Finder",
-        "🏷️ Keywords": "Keyword & Contribution Extractor",
+        "AI Detector": "ZeroGPT — AI vs Human Detector",
+        "Flow & Cohesion": "Flow & Cohesion Map",
+        "Citation Density": "Citation Density & Uncited Claims",
+        "Section Completeness": "Section Completeness Check",
+        "Abstract Scorecard": "Abstract Scorecard",
+        "Tone Auditor": "Tone Auditor (Hedging/Overclaiming)",
+        "Terminology": "Terminology & Acronym Check",
+        "Repetition": "Repetition / Self-Overlap Finder",
+        "Keywords": "Keyword & Contribution Extractor",
     }
     _picked = st.radio("Tool", list(_SUITE_TOOLS.keys()), horizontal=True,
                        label_visibility="collapsed", key="suite_tool")
@@ -434,6 +435,10 @@ if choice == "ZeroGPT — Writing Analysis Suite":
 
 # Sidebar: live AI backend status (Tier 1).
 render_backend_status()
+
+SEV_MD = {"Critical": ":red[**Critical**]", "Major": ":orange[**Major**]", "Minor": ":gray[**Minor**]",
+          "None": ":green[None]"}
+
 
 def _score_colour(s):
     return "#3F7D4A" if s >= 80 else ("#C08A2B" if s >= 60 else "#B5482E")
@@ -445,24 +450,24 @@ if choice == "Home":
         '<p>OnPaper drafts, checks, cites and polishes research writing — and most of it works '
         'offline, with no API key, on the text you already have.</p></div>', unsafe_allow_html=True)
     cta1, cta2, cta3, _ = st.columns([1.3, 1.5, 1.3, 1.6])
-    cta1.button("🩺 Check my draft", type="primary", use_container_width=True,
+    cta1.button("Check my draft", type="primary", use_container_width=True,
                 on_click=_go, args=("Paper Health Check",))
-    cta2.button("✨ See it on a sample draft", use_container_width=True, on_click=_load_sample)
-    cta3.button("📝 Start a new paper", use_container_width=True, on_click=_go, args=("Content Generation",))
+    cta2.button("See it on a sample draft", use_container_width=True, on_click=_load_sample)
+    cta3.button("Start a new paper", use_container_width=True, on_click=_go, args=("Content Generation",))
     for _group, _items in NAV_GROUPS:
         st.markdown(f"### {_group}")
         cols = st.columns(3)
-        for i, (_key, _icon, _label, _blurb, _offline) in enumerate(_items):
+        for i, (_key, _label, _blurb, _offline) in enumerate(_items):
             with cols[i % 3].container(border=True):
                 pill = '<span class="op-pill">no AI key</span>' if _offline else ""
-                st.markdown(f"**{_icon} {_label}**{pill}", unsafe_allow_html=True)
+                st.markdown(f"**{_label}**{pill}", unsafe_allow_html=True)
                 st.caption(_blurb)
                 st.button("Open →", key=f"home_{_key}", on_click=_go, args=(_key,))
     st.markdown('<div class="op-foot">OnPaper · made with care for everyone staring at a blank page</div>',
                 unsafe_allow_html=True)
 
 elif choice == "Paper Health Check":
-    st.header("🩺 Paper Health Check")
+    st.header("Paper Health Check")
     st.caption("Runs every offline analyzer on your draft at once — readability, evidence, flow, tone, "
                "terminology, repetition, structure and abstract — then highlights each problem right in "
                "your text and ranks what to fix first. No AI key needed; nothing leaves the server.")
@@ -471,7 +476,7 @@ elif choice == "Paper Health Check":
     tc1, tc2 = st.columns([3, 1.2])
     _hc_label = tc1.selectbox("Paper type (for the structure check):", _pnames, key="hc_type")
     tc2.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
-    tc2.button("✨ Try a sample draft", use_container_width=True, on_click=_load_sample, key="hc_sample")
+    tc2.button("Try a sample draft", use_container_width=True, on_click=_load_sample, key="hc_sample")
     text = analysis_input("hc", "Or paste your draft (keep headings on their own lines):")
     _auto = st.session_state.pop("_hc_autorun", False)
     if st.button("Run health check", type="primary", key="hc_btn") or _auto:
@@ -511,28 +516,27 @@ elif choice == "Paper Health Check":
             st.caption(f"{res['word_count']} words · {len(res['dims'])} dimensions measured · "
                        f"{len(res['fixes'])} item(s) flagged")
             for d in res["dims"]:
-                st.markdown(f"{d['icon']} **{d['name']}** — {d['score']}/100 · "
+                st.markdown(f"**{d['name']}** — {d['score']}/100 · "
                             f"<span style='opacity:.65'>{d['summary']}</span>", unsafe_allow_html=True)
                 st.markdown(f'<div class="op-bar"><div style="width:{d["score"]}%;background:{_score_colour(d["score"])}">'
                             f'</div></div>', unsafe_allow_html=True)
 
-        t_fix, t_doc, t_kw = st.tabs([f"🛠️ Fix these first ({len(res['fixes'])})", "🖍️ Your draft, annotated",
-                                      "🏷️ Keywords & contribution"])
+        t_fix, t_doc, t_kw = st.tabs([f"Fix these first ({len(res['fixes'])})", "Your draft, annotated",
+                                      "Keywords & contribution"])
         with t_fix:
             if not res["fixes"]:
                 st.success("Nothing flagged. Lovely work.")
             else:
                 can_ai = ai_available()
                 if not can_ai:
-                    st.caption("💡 Connect an AI backend (GROQ_API_KEY) and every flagged sentence gets a "
-                               "one-click ✨ Rewrite you can apply straight to your draft.")
+                    st.caption("Connect an AI backend (GROQ_API_KEY) and every flagged sentence gets a "
+                               "one-click Rewrite you can apply straight to your draft.")
                 rewrites = st.session_state.setdefault("hc_rewrites", {})
-                _sev = {"Critical": "🔴", "Major": "🟠", "Minor": "🟡"}
                 top = st.container()
                 more = st.expander(f"…and {len(res['fixes']) - 12} more") if len(res["fixes"]) > 12 else None
                 for i, f in enumerate(res["fixes"]):
                     with (top if i < 12 else more):
-                        st.markdown(f"{i + 1}. {_sev.get(f.severity, '⚪')} **{f.severity}** · {f.icon} {f.dim} — "
+                        st.markdown(f"{i + 1}. {SEV_MD.get(f.severity, f.severity)} · {f.dim} — "
                                     f"{_html.escape(f.text)}")
                         if not f.sentence:
                             continue
@@ -540,30 +544,32 @@ elif choice == "Paper Health Check":
                                     unsafe_allow_html=True)
                         b1, b2, _ = st.columns([1.1, 1.3, 3])
                         if f.action == "cite":
-                            b1.button("🔗 Find a source", key=f"hc_cite_{i}", on_click=_find_source_for,
+                            b1.button("Find a source", key=f"hc_cite_{i}", on_click=_find_source_for,
                                       args=(f.sentence,))
                         elif f.action and can_ai:
-                            if b1.button("✨ Rewrite", key=f"hc_rw_{i}"):
+                            if b1.button("Rewrite", key=f"hc_rw_{i}"):
                                 with st.spinner("Rewriting…"):
                                     rewrites[i] = paraphrase_text(f.sentence, mode=f.action)
                             out = rewrites.get(i)
                             if out and out.get("error"):
                                 st.warning(out["error"])
                             elif out:
-                                st.markdown(f"<div class='op-rewrite'>✨ {_html.escape(out['result'])}</div>",
+                                st.markdown(f"<div class='op-rewrite'>{_html.escape(out['result'])}</div>",
                                             unsafe_allow_html=True)
-                                b2.button("✅ Apply to my draft", key=f"hc_apply_{i}", on_click=_apply_rewrite,
+                                b2.button("Apply to my draft", key=f"hc_apply_{i}", on_click=_apply_rewrite,
                                           args=(f.sentence, out["result"]))
         with t_doc:
-            st.caption("Hover any highlight to see what's wrong.  🟥 critical · 🟧 major · 🟨 minor")
+            st.markdown("<span style='font-size:.85rem;opacity:.75'>Hover any highlight to see what's wrong: "
+                        "<mark class='op-sev-critical'>critical</mark> <mark class='op-sev-major'>major</mark> "
+                        "<mark class='op-sev-minor'>minor</mark></span>", unsafe_allow_html=True)
             st.markdown(f"<div class='op-doc'>{res['annotated']}</div>", unsafe_allow_html=True)
         with t_kw:
             k1, k2 = st.columns(2)
             with k1:
-                st.markdown("**🏷️ Suggested keywords**")
+                st.markdown("**Suggested keywords**")
                 st.markdown("  ".join(f"`{k}`" for k in res["keywords"]) or "—")
             with k2:
-                st.markdown("**💡 Your contribution, as the draft states it**")
+                st.markdown("**Your contribution, as the draft states it**")
                 for c in res["contributions"][:3]:
                     st.markdown(f"> {c}")
                 if not res["contributions"]:
@@ -576,10 +582,10 @@ elif choice == "Paper Health Check":
                             mime="text/markdown", key="hc_dl")
         dl2.download_button("Download report (.docx)", data=text_to_docx("Paper Health Check", _report),
                             file_name="paper_health_check.docx", mime=DOCX_MIME, key="hc_docx")
-        st.caption("Want a deeper read? The 🧑‍⚖️ Peer Reviewer judges the argument itself (needs an AI backend).")
+        st.caption("Want a deeper read? The Peer Reviewer judges the argument itself (needs an AI backend).")
 
 elif choice == "Content Generation":
-    st.header("📝 Content Generation")
+    st.header("Content Generation")
     # Remember the topic across all four tabs (Tier 1).
     for _k in _TOPIC_KEYS:
         st.session_state.setdefault(_k, "")
@@ -679,7 +685,7 @@ elif choice == "Content Generation":
         paper_type = st.selectbox("Select paper type:", paper_types, key="quick_type")
         word_count = st.slider("Approx. words per section:", min_value=150, max_value=1200, value=400, step=50, key="quick_wordcount")
         if word_count >= 800:
-            st.caption("⏳ Longer sections take more time and may be throttled on the free Groq tier.")
+            st.caption("Longer sections take more time and may be throttled on the free Groq tier.")
         if st.button("Generate In-Depth Quick Paper", key="quick_gen"):
             if topic:
                 with st.spinner("Generating your paper — this can take a minute…"):
@@ -813,7 +819,7 @@ elif choice == "Content Generation":
             else:
                 st.warning("Please enter a topic and select at least one section.")
 elif choice == "Paper Analysis":
-    st.header("🔍 Paper Analysis")
+    st.header("Paper Analysis")
     tab1, tab2 = st.tabs(["Analyze Uploaded File", "Analyze Pasted Text"])
     with tab1:
         uploaded_file = st.file_uploader("Upload a PDF or TXT file for analysis:", type=["pdf", "txt"], key="analysis_file")
@@ -854,11 +860,11 @@ elif choice == "Paper Analysis":
             else:
                 st.warning("Please paste some text.")
 elif choice == "Grammar Check":
-    st.header("✍️ Grammar Check")
+    st.header("Grammar Check")
     
     # Add info about AI backend
     if not (os.getenv('GROQ_API_KEY') or os.getenv('OLLAMA_BASE_URL')):
-        st.info("💡 **Tip**: Add a free Groq API key (GROQ_API_KEY) to the .env file for AI grammar checking, or run a local Ollama server. Get a free Groq key at https://console.groq.com/keys")
+        st.info("**Tip**: Add a free Groq API key (GROQ_API_KEY) to the .env file for AI grammar checking, or run a local Ollama server. Get a free Groq key at https://console.groq.com/keys")
     
     text = st.text_area("Enter text to check for grammar:", height=200, **_draft_box("grammar_text"))
     show_counter(text)
@@ -918,7 +924,7 @@ elif choice == "Grammar Check":
     
     # Show changes button functionality
     if show_changes and hasattr(st.session_state, 'grammar_changes') and st.session_state.grammar_changes:
-        st.subheader("📝 Detailed Changes Made:")
+        st.subheader("Detailed Changes Made:")
         
         changes = st.session_state.grammar_changes
         original_text = st.session_state.grammar_original
@@ -939,16 +945,11 @@ elif choice == "Grammar Check":
                     st.text(change['context'])
                     
                     # Color coding based on severity
-                    severity_color = {
-                        'error': '🔴',
-                        'warning': '🟡', 
-                        'info': '🔵'
-                    }.get(change['severity'], '⚪')
-                    
-                    st.markdown(f"**Severity:** {severity_color} {change['severity'].title()}")
+                    colour = {'error': 'red', 'warning': 'orange', 'info': 'blue'}.get(change['severity'], 'gray')
+                    st.markdown(f"**Severity:** :{colour}[{change['severity'].title()}]")
             
             # Show side-by-side comparison
-            st.subheader("📊 Side-by-Side Comparison:")
+            st.subheader("Side-by-Side Comparison:")
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("**Original Text:**")
@@ -961,7 +962,7 @@ elif choice == "Grammar Check":
     elif show_changes:
         st.warning("Please run grammar check first to see changes.")
 elif choice == "Plagiarism Detection":
-    st.header("🔍 Plagiarism Detection")
+    st.header("Plagiarism Detection")
     col1, col2 = st.columns(2)
     with col1:
         uploaded_file = st.file_uploader("Upload a file for plagiarism check:", type=["pdf", "txt"], key="plag_file")
@@ -971,7 +972,7 @@ elif choice == "Plagiarism Detection":
     threshold = st.slider("Plagiarism threshold (%):", min_value=10, max_value=100, value=70, step=1)
 
     # Tier 3: compare against YOUR OWN reference documents, not just the bundled corpus.
-    with st.expander("➕ Add your own reference documents (compare against your sources or prior drafts)"):
+    with st.expander("Add your own reference documents (compare against your sources or prior drafts)"):
         ref_files = st.file_uploader("Upload reference PDFs/TXTs to compare against:",
                                      type=["pdf", "txt"], accept_multiple_files=True, key="plag_refs")
         only_mine = st.checkbox("Compare ONLY against my documents (ignore the bundled 93-paper corpus)",
@@ -1024,7 +1025,7 @@ elif choice == "Plagiarism Detection":
                         st.write(f"- {sent['input_sentence']} (Similarity: {sent['similarity']:.2f})")
 
                 # Why this score? (Tier 1 explainer)
-                with st.expander("ℹ️ Why this score? — how to read it"):
+                with st.expander("Why this score? — how to read it"):
                     score = result['plagiarism_score']
                     if score > threshold:
                         band = f"above your {threshold}% threshold — flagged as a risk"
@@ -1059,7 +1060,7 @@ elif choice == "Plagiarism Detection":
                     mime="text/plain"
                 )
 elif choice == "Paraphraser":
-    st.header("🔄 Paraphraser / Rewriter")
+    st.header("Paraphraser / Rewriter")
     st.caption("Rewrite text to reduce plagiarism, improve clarity, or change tone. Requires an AI backend (Groq/Ollama).")
 
     para_text = st.text_area("Enter text to rewrite:", height=200, key="para_text")
@@ -1103,7 +1104,7 @@ elif choice == "Paraphraser":
         else:
             st.warning("Please enter some text to rewrite.")
 elif choice == "Reference Finder":
-    st.header("🔗 Reference Finder")
+    st.header("Reference Finder")
     st.caption("Finds real academic papers with DOIs via CrossRef — no AI key required. (Requires internet.)")
 
     query = st.text_input("Search for references on a topic or title:", key="ref_query")
@@ -1150,7 +1151,7 @@ elif choice == "Reference Finder":
         else:
             st.warning("Please enter a search query.")
 elif choice == "Readability & Quality":
-    st.header("📈 Readability & Writing Quality")
+    st.header("Readability & Writing Quality")
     st.caption("Offline analysis — works without any AI key. Paste text or upload a file.")
 
     col1, col2 = st.columns(2)
@@ -1190,7 +1191,7 @@ elif choice == "Readability & Quality":
                     st.metric("Flesch-Kincaid Grade", result["flesch_kincaid_grade"])
                     _lo, _hi = AUDIENCE_PRESETS[audience]
                     _gs = grade_band_status(result["flesch_kincaid_grade"], _lo, _hi)
-                    st.caption(("🟢 " if _gs == "on target" else "🟠 ") + _gs)
+                    st.caption(f":green[{_gs}]" if _gs == "on target" else f":orange[{_gs}]")
                 with c3:
                     st.metric("Gunning Fog Index", result["gunning_fog"])
                     st.caption("Years of education to read")
@@ -1218,21 +1219,21 @@ elif choice == "Readability & Quality":
                     st.metric("Complex words", f"{result['hard_word_count']} ({result['hard_word_percent']}%)")
 
                 if result["long_sentences"]:
-                    with st.expander(f"⚠️ {result['long_sentence_count']} long sentence(s) — consider splitting"):
+                    with st.expander(f"{result['long_sentence_count']} long sentence(s) — consider splitting"):
                         for idx, item in enumerate(result["long_sentences"]):
                             st.markdown(f"**({item['words']} words)** {item['sentence']}")
-                            st.button("✏️ Send to Paraphraser", key=f"para_long_{idx}",
+                            st.button("Send to Paraphraser", key=f"para_long_{idx}",
                                       on_click=_send_to_paraphraser, args=(item["sentence"],))
 
                 if result["passive_sentences"]:
-                    with st.expander(f"🔎 {result['passive_count']} possible passive-voice sentence(s)"):
+                    with st.expander(f"{result['passive_count']} possible passive-voice sentence(s)"):
                         for idx, sent in enumerate(result["passive_sentences"]):
                             st.markdown(f"- {sent}")
-                            st.button("✏️ Send to Paraphraser", key=f"para_pass_{idx}",
+                            st.button("Send to Paraphraser", key=f"para_pass_{idx}",
                                       on_click=_send_to_paraphraser, args=(sent,))
 
                 # Readability heat-strip (per-sentence difficulty).
-                with st.expander("🌡️ Readability heat-strip (where the hard sentences are)"):
+                with st.expander("Readability heat-strip (where the hard sentences are)"):
                     render_heatstrip(analyze_sentences(text))
 
                 # Downloadable report
@@ -1259,7 +1260,7 @@ elif choice == "Readability & Quality":
         else:
             st.warning("Please paste text or upload a file to analyze.")
 elif choice == "Chat with your Paper":
-    st.header("💬 Chat with your Paper")
+    st.header("Chat with your Paper")
     st.caption("Upload a paper, then ask questions answered from its content. Hybrid semantic + keyword retrieval works offline; the written answer needs an AI backend.")
 
     col_u, col_k = st.columns([3, 1])
@@ -1289,7 +1290,7 @@ elif choice == "Chat with your Paper":
 
     if "chat_doc" in st.session_state:
         doc = st.session_state["chat_doc"]
-        st.info(f"📄 {st.session_state.get('chat_doc_name', 'document')}  ·  🔎 Retrieval: {doc.get('mode', 'lexical')}")
+        st.info(f"{st.session_state.get('chat_doc_name', 'document')}  ·  Retrieval: {doc.get('mode', 'lexical')}")
 
         c1, c2, c3 = st.columns([1.1, 1.6, 0.9])
         with c1:
@@ -1297,9 +1298,9 @@ elif choice == "Chat with your Paper":
         with c2:
             use_general = st.checkbox("Use general knowledge too (labeled separately)", value=True, key="chat_general")
         with c3:
-            if st.button("🗑️ Clear chat", key="chat_clear"):
+            if st.button("Clear chat", key="chat_clear"):
                 st.session_state["chat_history"] = []
-        find_only = st.checkbox("🔎 Find passages only (no AI answer — instant, works offline)",
+        find_only = st.checkbox("Find passages only (no AI answer — instant, works offline)",
                                 value=False, key="chat_find")
         detailed = (length_mode == "Detailed")
 
@@ -1326,9 +1327,9 @@ elif choice == "Chat with your Paper":
         # Auto-summary + suggested questions (from document_overview at load time).
         ov = st.session_state.get("chat_overview") or {}
         if ov.get("summary"):
-            st.markdown(f"**📄 Summary:** {ov['summary']}")
+            st.markdown(f"**Summary:** {ov['summary']}")
         if ov.get("questions"):
-            st.caption("💡 Suggested questions — click to ask:")
+            st.caption("Suggested questions — click to ask:")
             qcols = st.columns(2)
             for i, sq in enumerate(ov["questions"]):
                 if qcols[i % 2].button(sq, key=f"chat_sugg_{i}"):
@@ -1341,7 +1342,7 @@ elif choice == "Chat with your Paper":
             with st.chat_message("assistant"):
                 if turn.get("find_only"):
                     if turn.get("passages"):
-                        st.caption("🔎 Most relevant passages (no AI answer):")
+                        st.caption("Most relevant passages (no AI answer):")
                         for i, p in enumerate(turn["passages"], 1):
                             sec = f" · {p['section']}" if p.get("section") else ""
                             st.markdown(f"**Passage {i}**{sec} · relevance {p['score']:.2f}")
@@ -1354,7 +1355,7 @@ elif choice == "Chat with your Paper":
                     elif turn.get("error"):
                         st.warning(turn["error"])
                     if turn.get("passages"):
-                        with st.expander(f"📑 Source passages ({len(turn['passages'])})"):
+                        with st.expander(f"Source passages ({len(turn['passages'])})"):
                             for i, p in enumerate(turn["passages"], 1):
                                 sec = f" · {p['section']}" if p.get("section") else ""
                                 st.markdown(f"**Passage {i}**{sec} · relevance {p['score']:.2f}")
@@ -1366,10 +1367,10 @@ elif choice == "Chat with your Paper":
     else:
         st.info("Upload a paper and click **Load Document** to begin.")
 elif choice == "ZeroGPT — AI vs Human Detector":
-    st.header("🤖 ZeroGPT — AI vs Human Detector")
-    st.caption("🧪 Experimental & offline. Combines a trained classifier (HC3) with style heuristics.")
+    st.header("ZeroGPT — AI vs Human Detector")
+    st.caption("Experimental & offline. Combines a trained classifier (HC3) with style heuristics.")
     st.warning(
-        "⚠️ **AI detection is unreliable.** Treat this as a weak signal, not proof. "
+        "**AI detection is unreliable.** Treat this as a weak signal, not proof. "
         "Short text, edited AI text, and AI from models other than ChatGPT can evade it, "
         "and confident human writing can be falsely flagged. Never use it to accuse anyone."
     )
@@ -1388,11 +1389,11 @@ elif choice == "ZeroGPT — AI vs Human Detector":
                 verdict = result["verdict"]
                 # Verdict banner
                 if score >= 65:
-                    st.error(f"🤖 {verdict} — {score}% AI")
+                    st.error(f"{verdict} — {score}% AI")
                 elif score >= 35:
-                    st.warning(f"❓ {verdict} — {score}% AI")
+                    st.warning(f"{verdict} — {score}% AI")
                 else:
-                    st.success(f"🧑 {verdict} — {score}% AI")
+                    st.success(f"{verdict} — {score}% AI")
 
                 st.progress(min(int(score), 100))
                 c1, c2, c3, c4 = st.columns(4)
@@ -1433,8 +1434,8 @@ elif choice == "ZeroGPT — AI vs Human Detector":
         else:
             st.warning("Please paste some text to analyze.")
 elif choice == "Flow & Cohesion Map":
-    st.header("🔀 Flow & Cohesion Map")
-    st.caption("🧪 Offline. Flags abrupt topic jumps between consecutive paragraphs so you can add "
+    st.header("Flow & Cohesion Map")
+    st.caption("Offline. Flags abrupt topic jumps between consecutive paragraphs so you can add "
                "transitions. Reuses the embedding model (TF-IDF fallback).")
     text = analysis_input("coh", "Or paste your paper (keep blank lines between paragraphs):")
     if st.button("Analyze flow", key="coh_btn"):
@@ -1450,16 +1451,15 @@ elif choice == "Flow & Cohesion Map":
                 c3.metric("Weak transitions", r["weak_count"])
                 st.caption(f"Retrieval: {r['mode']} · weak = below {r['threshold']:.2f} and no connector word")
                 for p in r["pairs"]:
-                    icon = "🔴" if p["weak"] else ("🟢" if not p["has_connector"] else "🔗")
-                    st.markdown(f"{icon} **¶{p['from']} → ¶{p['to']}** · similarity {p['similarity']:.2f}"
-                                + (" — weak jump, consider a transition" if p["weak"] else ""))
+                    st.markdown(f"**¶{p['from']} → ¶{p['to']}** · similarity {p['similarity']:.2f}"
+                                + (" — :red[weak jump], consider a transition" if p["weak"] else ""))
                     if p["weak"]:
                         st.caption(f"¶{p['to']} starts: “{p['preview']}”")
         else:
             st.warning("Please paste or upload some text with at least 2 paragraphs.")
 elif choice == "Citation Density & Uncited Claims":
-    st.header("📑 Citation Density & Uncited Claims")
-    st.caption("🧪 Offline. Counts in-text citations and flags evidence-bearing sentences that cite nothing "
+    st.header("Citation Density & Uncited Claims")
+    st.caption("Offline. Counts in-text citations and flags evidence-bearing sentences that cite nothing "
                "(the #1 reviewer complaint).")
     text = analysis_input("claim")
     if st.button("Analyze citations", key="claim_btn"):
@@ -1478,7 +1478,7 @@ elif choice == "Citation Density & Uncited Claims":
                         st.markdown(f"- **{s['section']}** — {s['markers']} citation(s) in {s['words']} words "
                                     f"({s['per_1000']}/1000)")
                 if r["uncited_claims"]:
-                    with st.expander(f"⚠️ {r['uncited_count']} claim sentence(s) with no nearby citation"):
+                    with st.expander(f"{r['uncited_count']} claim sentence(s) with no nearby citation"):
                         for s in r["uncited_claims"]:
                             st.markdown(f"- {s}")
                 else:
@@ -1486,8 +1486,8 @@ elif choice == "Citation Density & Uncited Claims":
         else:
             st.warning("Please paste or upload some text.")
 elif choice == "Section Completeness Check":
-    st.header("✅ Section Completeness Check")
-    st.caption("🧪 Offline. Checks your draft's sections (detected from headings) against the expected "
+    st.header("Section Completeness Check")
+    st.caption("Offline. Checks your draft's sections (detected from headings) against the expected "
                "structure for a paper type, with per-section word budgets.")
     _ptypes = get_paper_types()
     _labels = [n for _, n in _ptypes]
@@ -1511,13 +1511,13 @@ elif choice == "Section Completeness Check":
                     st.caption("Unrecognized / extra headings: " + ", ".join(r["extra"]))
                 st.subheader("Word counts vs target")
                 for row in r["rows"]:
-                    icon = {"ok": "🟢", "under": "🟡", "over": "🟠"}.get(row["status"], "⚪")
-                    st.markdown(f"{icon} **{row['section']}** — {row['words']} words (target {row['target']})")
+                    tag = {"ok": ":green[on target]", "under": ":orange[under]", "over": ":orange[over]"}.get(row["status"], "")
+                    st.markdown(f"**{row['section']}** — {row['words']} words (target {row['target']}) · {tag}")
         else:
             st.warning("Please paste or upload a draft that includes section headings.")
 elif choice == "Abstract Scorecard":
-    st.header("📋 Abstract Scorecard")
-    st.caption("🧪 Offline. Scores an abstract on the 5 expected moves (background, gap/aim, methods, "
+    st.header("Abstract Scorecard")
+    st.caption("Offline. Scores an abstract on the 5 expected moves (background, gap/aim, methods, "
                "results, conclusion) plus length and readability.")
     abs_text = st.text_area("Paste your abstract (or a full paper with an 'Abstract' heading):",
                             height=180, **_draft_box("abs_text"))
@@ -1533,7 +1533,7 @@ elif choice == "Abstract Scorecard":
                            + (f" · Flesch {r['flesch_reading_ease']}" if r['flesch_reading_ease'] is not None else ""))
                 st.subheader("Expected moves")
                 for move, ok in r["moves"].items():
-                    st.markdown(f"{'✅' if ok else '❌'} {move}")
+                    st.markdown(f"{move} — {':green[present]' if ok else ':red[missing]'}")
                 if r["tips"]:
                     st.subheader("Suggestions")
                     for t in r["tips"]:
@@ -1541,8 +1541,8 @@ elif choice == "Abstract Scorecard":
         else:
             st.warning("Please paste your abstract.")
 elif choice == "Tone Auditor (Hedging/Overclaiming)":
-    st.header("🎚️ Academic Tone Auditor")
-    st.caption("🧪 Offline. Counts hedging, overclaiming, filler/weasel words and first-person usage, "
+    st.header("Academic Tone Auditor")
+    st.caption("Offline. Counts hedging, overclaiming, filler/weasel words and first-person usage, "
                "with example sentences — to help calibrate claim strength.")
     text = analysis_input("tone")
     if st.button("Audit tone", key="tone_btn"):
@@ -1569,7 +1569,7 @@ elif choice == "Tone Auditor (Hedging/Overclaiming)":
         else:
             st.warning("Please paste or upload some text.")
 elif choice == "Verify References":
-    st.header("🔎 Verify References")
+    st.header("Verify References")
     st.caption("Paste your reference list — each entry is checked against CrossRef to catch fabricated / "
                "AI-hallucinated citations. Requires internet; checks up to 20 references.")
     ref_text = st.text_area("Paste your references (one per line):", height=240, key="verify_text")
@@ -1582,17 +1582,17 @@ elif choice == "Verify References":
             else:
                 c = r["counts"]
                 m1, m2, m3 = st.columns(3)
-                m1.metric("✅ Verified", c["Verified"])
-                m2.metric("⚠️ Possible", c["Possible match"])
-                m3.metric("❌ Not found", c["Not found"])
+                m1.metric("Verified", c["Verified"])
+                m2.metric("Possible match", c["Possible match"])
+                m3.metric("Not found", c["Not found"])
                 if r["counts"]["Not found"]:
                     st.warning(f"{r['counts']['Not found']} reference(s) could not be matched — verify "
                                "these manually; they may be fabricated.")
                 if r["truncated"]:
                     st.caption(f"Checked the first {r['checked']} of {r['total_found']} references.")
                 for item in r["results"]:
-                    icon = {"Verified": "✅", "Possible match": "⚠️", "Not found": "❌"}[item["verdict"]]
-                    with st.expander(f"{icon} {item['verdict']} ({item['confidence']}%) — {item['entry'][:80]}"):
+                    colour = {"Verified": "green", "Possible match": "orange", "Not found": "red"}[item["verdict"]]
+                    with st.expander(f":{colour}[{item['verdict']}] ({item['confidence']}%) — {item['entry'][:80]}"):
                         st.markdown(f"**Your entry:** {item['entry']}")
                         if item["matched_title"]:
                             st.markdown(f"**Closest real paper:** {item['matched_title']}")
@@ -1602,13 +1602,13 @@ elif choice == "Verify References":
                             st.markdown("_No matching paper found in CrossRef — verify this citation "
                                         "manually; it may be fabricated._")
                         if item["doi_mismatch"]:
-                            st.warning(f"⚠️ DOI mismatch: your entry's DOI (`{item['entry_doi']}`) ≠ the "
+                            st.warning(f"DOI mismatch: your entry's DOI (`{item['entry_doi']}`) ≠ the "
                                        f"matched paper's DOI (`{item['matched_doi']}`).")
         else:
             st.warning("Please paste at least one reference.")
 elif choice == "Terminology & Acronym Check":
-    st.header("🔤 Terminology & Acronym Consistency")
-    st.caption("🧪 Offline. Flags acronyms used before they're defined or never expanded, and inconsistent "
+    st.header("Terminology & Acronym Consistency")
+    st.caption("Offline. Flags acronyms used before they're defined or never expanded, and inconsistent "
                "term spellings (e.g. 'dataset' vs 'data-set').")
     text = analysis_input("term")
     if st.button("Check consistency", key="term_btn"):
@@ -1633,8 +1633,8 @@ elif choice == "Terminology & Acronym Check":
         else:
             st.warning("Please paste or upload some text.")
 elif choice == "Repetition / Self-Overlap Finder":
-    st.header("♻️ Repetition / Self-Overlap Finder")
-    st.caption("🧪 Offline. Finds near-duplicate sentences within your paper (recycled phrasing, an idea "
+    st.header("Repetition / Self-Overlap Finder")
+    st.caption("Offline. Finds near-duplicate sentences within your paper (recycled phrasing, an idea "
                "restated). Compares the document to itself — not an external corpus.")
     text = analysis_input("rep")
     rep_threshold = st.slider("Similarity threshold:", min_value=0.5, max_value=0.95, value=0.8, step=0.05)
@@ -1657,8 +1657,8 @@ elif choice == "Repetition / Self-Overlap Finder":
         else:
             st.warning("Please paste or upload some text.")
 elif choice == "Keyword & Contribution Extractor":
-    st.header("🏷️ Keyword & Contribution Extractor")
-    st.caption("🧪 Offline. Suggests candidate keywords (TF-IDF) and surfaces likely contribution / novelty "
+    st.header("Keyword & Contribution Extractor")
+    st.caption("Offline. Suggests candidate keywords (TF-IDF) and surfaces likely contribution / novelty "
                "statements from your draft.")
     text = analysis_input("kw")
     if st.button("Extract", key="kw_btn"):
@@ -1681,8 +1681,8 @@ elif choice == "Keyword & Contribution Extractor":
         else:
             st.warning("Please paste or upload some text.")
 elif choice == "AI Prompt Generator":
-    st.header("✨ AI Prompt Generator")
-    st.caption("🧪 Turn a rough idea (written casually OR formally) into a clean, structured prompt for "
+    st.header("AI Prompt Generator")
+    st.caption("Turn a rough idea (written casually OR formally) into a clean, structured prompt for "
                "an LLM. Output follows the prompt-quality rule-set: role to context to task to output "
                "format, with zero em dashes, smart quotes, or AI-tell filler. Pick a framework, "
                "generate, then optionally refine. Needs an AI backend.")
@@ -1731,7 +1731,7 @@ elif choice == "AI Prompt Generator":
                            mime="text/plain", key="pg_txt")
         d2.download_button("Download .docx", data=text_to_docx("Generated Prompt", prompt_out),
                            file_name="prompt.docx", mime=DOCX_MIME, key="pg_docx")
-        if d3.button("✨ Refine (critique & improve)", key="pg_refine_btn"):
+        if d3.button("Refine (critique & improve)", key="pg_refine_btn"):
             ctx = st.session_state.get("pg_ctx", {})
             with st.spinner("Critiquing and refining…"):
                 ref = refine_prompt(prompt_out, ctx.get("idea", ""), ctx.get("framework", ""))
@@ -1753,8 +1753,8 @@ elif choice == "AI Prompt Generator":
                         st.markdown(f"- {it}")
 
 elif choice == "AI Peer Reviewer":
-    st.header("🧑‍⚖️ AI Peer Reviewer")
-    st.caption("🧪 Score a paper or draft like a strict journal reviewer. Each criterion is rated 0-100 "
+    st.header("AI Peer Reviewer")
+    st.caption("Score a paper or draft like a strict journal reviewer. Each criterion is rated 0-100 "
                "(50 = a solid, publishable standard) with a severity-tagged weakness, the exact sentence "
                "it judged, and a fix. Then get a prioritized revision plan and a one-click revised draft "
                "you can re-score. Needs an AI backend.")
@@ -1812,16 +1812,14 @@ elif choice == "AI Peer Reviewer":
         if res.get("fallback_rubric"):
             st.info("Used the built-in academic rubric (rubric auto-generation was unavailable).")
 
-        _SEV_EMOJI = {"Critical": "🔴", "Major": "🟠", "Minor": "🟡", "None": "🟢", "": "⚪"}
         st.subheader("Per-criterion review")
         for it in res["items"]:
-            tag = "🖼️" if it["type"] == "image" else "📝"
+            tag = "[image] " if it["type"] == "image" else ""
             head = it["content"][:80] + ("…" if len(it["content"]) > 80 else "")
             score_label = "not scored" if it.get("unavailable") else f"{it['score']}/100"
             sev = it.get("severity", "")
-            badge = _SEV_EMOJI.get(sev, "⚪")
-            sev_txt = f" · {sev}" if sev else ""
-            with st.expander(f"{badge} {tag} {score_label}{sev_txt} · w {it['weight']:.2f} — {head}"):
+            sev_txt = f" · {SEV_MD.get(sev, sev)}" if sev else ""
+            with st.expander(f"{tag}{score_label}{sev_txt} · w {it['weight']:.2f} — {head}"):
                 st.markdown(f"**Criterion:** {it['content']}")
                 st.markdown(f"**Score:** {score_label}   ·   **Severity:** {sev or 'n/a'}   ·   "
                             f"**Weight:** {it['weight']:.2f}")
@@ -1835,14 +1833,14 @@ elif choice == "AI Peer Reviewer":
         # Prioritized revision plan + revise -> re-score loop.
         plan = build_revision_plan(res)
         if plan:
-            st.subheader("📋 Revision plan (highest-impact fixes first)")
+            st.subheader("Revision plan (highest-impact fixes first)")
             for i, p in enumerate(plan, 1):
-                sev_lbl = f"{_SEV_EMOJI.get(p.get('severity',''), '⚪')} **{p['severity']}** · " if p.get("severity") else ""
+                sev_lbl = f"{SEV_MD.get(p['severity'], p['severity'])} · " if p.get("severity") else ""
                 st.markdown(f"{i}. {sev_lbl}{p['content']} ({p['score']}/100)")
                 if p.get("fix"):
                     st.markdown(f"&nbsp;&nbsp;&nbsp;↳ _Fix:_ {p['fix']}")
 
-            if st.button("✍️ Generate a revised draft addressing these", key="pr_revise"):
+            if st.button("Generate a revised draft addressing these", key="pr_revise"):
                 with st.spinner("Drafting a revision…"):
                     rev = revise_paper(res.get("paper", ""), plan)
                 if rev.get("error"):
@@ -1859,7 +1857,7 @@ elif choice == "AI Peer Reviewer":
             rv2.download_button("Download revised (.docx)",
                                 data=text_to_docx("Revised Paper", st.session_state["pr_revised"]),
                                 file_name="revised_paper.docx", mime=DOCX_MIME, key="pr_rev_docx")
-            if rv3.button("🔁 Re-score the revised draft", key="pr_rescore"):
+            if rv3.button("Re-score the revised draft", key="pr_rescore"):
                 with st.spinner("Re-scoring the revised draft…"):
                     new = score_paper(st.session_state["pr_revised"], checklist=res.get("checklist"),
                                       reference_text=st.session_state.get("pr_ref", ""))

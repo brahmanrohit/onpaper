@@ -53,7 +53,7 @@ def test_every_page_renders(page):
 
 def test_sample_draft_runs_health_check_and_follows_you():
     at = app("Home")
-    at.button[[b.label for b in at.button].index("✨ See it on a sample draft")].click().run()
+    at.button[[b.label for b in at.button].index("See it on a sample draft")].click().run()
     assert at.session_state["feature_menu"] == "Paper Health Check"
     res = at.session_state["hc_result"]
     assert res["error"] is None and res["overall"] > 0
@@ -67,7 +67,7 @@ def test_sample_draft_runs_health_check_and_follows_you():
 
 def test_rewrite_then_apply_updates_draft_and_score_history():
     at = app("Home")
-    at.button[[b.label for b in at.button].index("✨ See it on a sample draft")].click().run()
+    at.button[[b.label for b in at.button].index("See it on a sample draft")].click().run()
     fixes = at.session_state["hc_result"]["fixes"]
     i = next(n for n, f in enumerate(fixes) if f.action == "Calibrate claim" and "clearly proves" in f.sentence)
     at.button(key=f"hc_rw_{i}").click().run()
@@ -80,7 +80,7 @@ def test_rewrite_then_apply_updates_draft_and_score_history():
 
 def test_find_a_source_opens_reference_finder_with_results():
     at = app("Home")
-    at.button[[b.label for b in at.button].index("✨ See it on a sample draft")].click().run()
+    at.button[[b.label for b in at.button].index("See it on a sample draft")].click().run()
     fixes = at.session_state["hc_result"]["fixes"]
     i = next(n for n, f in enumerate(fixes) if f.action == "cite")
     at.button(key=f"hc_cite_{i}").click().run()
@@ -95,13 +95,13 @@ def test_send_to_paraphraser_from_readability():
     at.text_area(key="read_text").set_value(" ".join(["the participants reported that"] * 8) + ". Short.").run()
     at.button(key="read_btn").click().run()
     at.button(key="para_long_0").click().run()
-    assert at.header[0].value.startswith("🔄 Paraphraser")
+    assert at.header[0].value.startswith("Paraphraser")
     assert at.text_area(key="para_text").value.startswith("the participants")
 
 
 def test_clear_draft():
     at = app("Home")
-    at.button[[b.label for b in at.button].index("✨ See it on a sample draft")].click().run()
+    at.button[[b.label for b in at.button].index("See it on a sample draft")].click().run()
     at.button(key="draft_clear").click().run()
     assert not at.session_state["draft"] if "draft" in at.session_state else True
     assert at.text_area(key="hc_text").value == ""

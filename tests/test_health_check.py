@@ -40,14 +40,14 @@ def test_grades():
 
 def test_annotate_escapes_and_tolerates_whitespace():
     text = "Intro <b>here</b>.\nThis   claim\nspans lines. Fine."
-    fixes = [Fix("Major", 50, "", "Tone", 'Overclaim "x"', "This claim spans lines.", None),
-             Fix("Minor", 60, "", "Flow", "dup", "This claim spans lines.", None)]
+    fixes = [Fix("Major", 50, "Tone", 'Overclaim "x"', "This claim spans lines.", None),
+             Fix("Minor", 60, "Flow", "dup", "This claim spans lines.", None)]
     out = annotate_html(text, fixes)
     assert "&lt;b&gt;" in out and "<b>" not in out               # draft text is escaped
     assert out.count("<mark") == 1                               # one highlight per sentence
     assert 'class="op-sev-major"' in out                         # most severe issue wins
     assert "&quot;x&quot; · dup" in out                          # all issues listed in the tooltip
-    assert annotate_html("abc", [Fix("Minor", 1, "", "", "t", "not there", None)]) == "abc"
+    assert annotate_html("abc", [Fix("Minor", 1, "", "t", "not there", None)]) == "abc"
 
 
 def test_real_run_on_sample_draft():
