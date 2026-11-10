@@ -108,7 +108,7 @@ run.py
             └─ from src.utils import ...     (feature modules)
                  ├─ generate_text()  → gemini_helper → groq_helper / ollama_helper / google-genai
                  ├─ check_plagiarism() → text_analyzer → loads enhanced_models_plagiarism.pkl
-                 ├─ summarize()        → pdf_processor → PyPDF2 + scikit-learn
+                 ├─ summarize()        → pdf_processor → pypdf + scikit-learn
                  ├─ answer_question()  → paper_chat → embedder (MiniLM) + TF-IDF + generate_text()
                  └─ ...
 ```
@@ -154,7 +154,7 @@ check_plagiarism(text, threshold)            [text_analyzer.py]
 ### 5.3 Paper Analysis / Summary
 ```
 upload PDF/TXT → pdf_processor.py
-  → PyPDF2 extracts text
+  → pypdf extracts text
   → TF-IDF scores sentences → pick top-N → extractive summary
 ```
 Offline, no API key needed.
@@ -290,13 +290,13 @@ Each module: **what to learn** + **where it lives in this repo**.
 - `torch>=2.6`, `transformers>=4.44,<6`
 
 ### Module 6 — Document processing & generation
-- **PDF extraction**: `PyPDF2`
+- **PDF extraction**: `pypdf`
 - **Word `.docx` generation**: `python-docx` (full-paper builder)
 - **PDF generation**: `pdfkit`
 - **Templating**: `Jinja2` (`MarkupSafe`)
 - Images/charts: `pillow`, `matplotlib`
 - 📍 [pdf_processor.py](src/utils/pdf_processor.py), [default_paper_generator.py](src/utils/default_paper_generator.py), [content_generator.py](src/utils/content_generator.py)
-- `PyPDF2==3.0.1`, `python-docx`, `pdfkit`, `Jinja2`, `pillow`, `matplotlib`
+- `pypdf`, `python-docx`, `pdfkit`, `Jinja2`, `pillow`, `matplotlib`
 
 ### Module 7 — External APIs & data collection
 - **CrossRef API** — real papers + DOIs, no key (Reference Finder)

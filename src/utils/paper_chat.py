@@ -22,6 +22,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from nltk.tokenize import sent_tokenize
 from .gemini_helper import generate_text, is_unavailable_response
+from .limits import UNTRUSTED_NOTE
 from . import embedder
 from .section_splitter import split_sections
 from .nltk_setup import ensure_nltk_data
@@ -229,7 +230,7 @@ def answer_question(question: str, doc: Dict, k: int = 4,
         )
 
     prompt = (
-        grounding_instr + " " + length_instr + "\n\n"
+        grounding_instr + " " + length_instr + " " + UNTRUSTED_NOTE + "\n\n"
         + history_section
         + f"Document passages:\n{context}\n\n"
         + f"Question: {question}\n\nAnswer:"
@@ -258,7 +259,7 @@ def document_overview(doc: Dict, num_questions: int = 4) -> Dict:
         "would answer. Respond EXACTLY in this format:\n"
         "SUMMARY: <2-3 sentence summary>\n"
         "QUESTIONS:\n- <question>\n- <question>\n\n"
-        f"Document:\n{context}"
+        f"{UNTRUSTED_NOTE}\n\nDocument:\n{context}"
     )
     result = generate_text(prompt)
     if is_unavailable_response(result):

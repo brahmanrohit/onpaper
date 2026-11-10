@@ -17,6 +17,8 @@ import re
 import time
 import requests
 
+from .limits import redact
+
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_MAX_TOKENS = 4096
@@ -93,7 +95,7 @@ def generate_text_with_groq(prompt: str) -> str:
             )
         except requests.exceptions.RequestException as e:
             # Transient network error — back off and retry.
-            last_detail = f"could not reach Groq API: {str(e)}"
+            last_detail = f"could not reach Groq API: {redact(str(e))}"
             if attempt < MAX_RETRIES - 1:
                 time.sleep(min(2 ** attempt, MAX_RETRY_WAIT))
                 continue
@@ -109,9 +111,9 @@ def generate_text_with_groq(prompt: str) -> str:
 
         # Non-200: capture the real API message (401 invalid key, 429 TPM, etc.)
         try:
-            last_detail = response.json().get("error", {}).get("message", "")
+            last_detail = redact(response.json().get("error", {}).get("message", ""))
         except Exception:
-            last_detail = response.text[:300]
+            last_detail = redact(response.text[:300])
 
         # Retry transient failures (rate limit / server errors); the rest are
         # terminal (e.g. 401 invalid key) and should fail fast.

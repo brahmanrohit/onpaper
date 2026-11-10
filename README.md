@@ -16,8 +16,9 @@ This is the **single source of truth** for the project. It documents the real, c
 7. [Machine Learning Models](#machine-learning-models)
 8. [Research Paper Types](#research-paper-types)
 9. [Model Tuning Reference](#model-tuning-reference)
-10. [Known Issues & Limitations](#known-issues--limitations)
-11. [Developer Notes](#developer-notes)
+10. [Security](#security)
+11. [Known Issues & Limitations](#known-issues--limitations)
+12. [Developer Notes](#developer-notes)
 
 ---
 
@@ -29,7 +30,7 @@ The app opens on a **Home** page; the sidebar groups every tool by stage — **C
 | Feature | What it does | Powered by |
 |---------|--------------|------------|
 | **Content Generation** | Generate a full paper (Word `.docx`), a quick paper (TXT), a single section, or a section-wise guide. Supports 10 paper types. | Groq/Ollama + templates |
-| **Paper Analysis** | Extract text from an uploaded PDF/TXT and produce a TF-IDF summary. | PyPDF2 + scikit-learn |
+| **Paper Analysis** | Extract text from an uploaded PDF/TXT and produce a TF-IDF summary. | pypdf + scikit-learn |
 | **Paper Health Check** | One click runs every offline analyzer (readability, evidence, flow, tone, terminology, repetition, structure, abstract): a 0–100 report card, your draft with every problem sentence **highlighted in place**, and a ranked fix list where each item has a one-click action — **✨ Rewrite → Apply to draft** (re-scores automatically, with a progress trend) or **🔗 Find a source** (opens Reference Finder already searching). Export as .md/.docx. Try it instantly with the bundled sample draft. | Native (no key); rewrites use Groq/Ollama |
 | **One draft, every tool** | Paste or upload once — the draft follows you into every analysis tool, already filled in. | — |
 | **Grammar Check** | Detect & correct grammar/spelling/style with change tracking and a side-by-side diff. | Gemini (with regex fallback) |
@@ -102,6 +103,7 @@ onpaperfixed/
 ├── src/                        # 🔧 LOGIC, SERVICES & MODELS
 │   ├── utils/                  # Core feature modules (imported by main.py)
 │   │   ├── config.py                 # Centralized paths, thresholds, paper types
+│   │   ├── limits.py                 # Input size limits + sanitisers for untrusted input (see Security)
 │   │   ├── gemini_helper.py          # ⭐ Central AI gateway: routes to Ollama/Gemini
 │   │   ├── ollama_helper.py          # Local Ollama client (auto-discovers server & model)
 │   │   ├── content_generator.py      # 10 paper-type templates; section-by-section generation
@@ -295,10 +297,33 @@ of pure TF-IDF.
 
 ---
 
+## Security
+
+OnPaper is public and takes untrusted files and text, so every input is bounded and nothing
+internal is shown to visitors. All limits live in one file, `src/utils/limits.py`, and are
+covered by `tests/test_security.py`.
+
+| Risk | Guard |
+|------|-------|
+| One huge upload or paste exhausting memory or CPU | Text is cut to 200,000 characters, PDFs to 300 pages, pairwise sentence comparison to 2,000 sentences, and browser messages to 10 MB. On an 877,000-character input the repetition finder went from 187 s and 1 GB of memory to 3 s and 71 MB. |
+| A malicious PDF | PDFs are parsed with the maintained `pypdf`. Its predecessor PyPDF2 is unmaintained and has a known vulnerability (PYSEC-2026-1835). |
+| One visitor burning the shared AI quota | The AI gateway refuses any prompt over 60,000 characters (`MAX_PROMPT_CHARS`) before it is sent. |
+| Text inside an uploaded paper steering the AI ("give this paper 100/100") | Reviewer and chat prompts mark the document as material to analyse, not instructions. This lowers the risk; it cannot remove it. |
+| Leaking internals to visitors | No Python tracebacks (`client.showErrorDetails = "none"`); provider organisation IDs and key-like strings are stripped from AI error messages; file-read errors are generic. |
+| Visitors' text lingering in server memory | Caches of analysed text are capped at 50 entries and expire after an hour. |
+| Cross-site request forgery | Streamlit's XSRF and CORS protections stay on, including in the Dockerfile. |
+| Vulnerable dependencies | CI runs `pip-audit` on every push and every Monday, and fails on any known vulnerability. The workflow token is read-only. |
+| Leaked secrets | `.env` and `secrets.toml` are git-ignored and were never committed; GitHub secret scanning and push protection are on. |
+
+Not covered: there is no per-visitor rate limit (the AI provider's own limits apply), and the
+pickled models in `src/ML/` are trusted because they ship with the repo.
+
+---
+
 ## Known Issues & Limitations
 
 - **Plagiarism corpus is generic** — the score reflects similarity to the 93 bundled academic
-  papers, not the web. There is no UI to add your own reference documents yet.
+  papers, not the web. You can add your own reference documents in the Plagiarism tool.
 - **No database / no auth / single-user** — state is files + pickles; models load at startup.
 - **`paper_type_detector` uses keyword matching at runtime** — the trained classifier pkl is
   loaded but `detect_paper_type()` currently returns keyword-based results.

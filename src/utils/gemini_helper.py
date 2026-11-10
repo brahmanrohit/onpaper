@@ -19,6 +19,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .ollama_helper import get_ollama_helper, is_ollama_available
 from .groq_helper import generate_text_with_groq, is_groq_available, get_groq_model
+from .limits import MAX_PROMPT_CHARS
 
 # Make console output robust on Windows terminals (cp1252) so that printing
 # unicode glyphs (e.g. status symbols) never raises UnicodeEncodeError.
@@ -93,6 +94,12 @@ def generate_text(prompt, backend="auto"):
     "auto" tries Groq first (fast cloud), then falls back to a local Ollama
     server. Set AI_BACKEND in .env, or pass backend="groq"/"ollama" explicitly.
     """
+    # One guard for every AI feature: an oversized prompt would only burn the shared
+    # quota and then be rejected by the provider, so it is refused here instead.
+    if len(prompt or "") > MAX_PROMPT_CHARS:
+        return (f"Error: the text is too long for the AI backend ({len(prompt):,} characters; the limit "
+                f"is {MAX_PROMPT_CHARS:,}). Shorten it or work on one section at a time.")
+
     # Get backend preference from environment or parameter
     if backend == "auto":
         backend = os.getenv("AI_BACKEND", "auto").lower()

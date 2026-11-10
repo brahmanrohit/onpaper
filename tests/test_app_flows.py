@@ -105,3 +105,13 @@ def test_clear_draft():
     at.button(key="draft_clear").click().run()
     assert not at.session_state["draft"] if "draft" in at.session_state else True
     assert at.text_area(key="hc_text").value == ""
+
+
+def test_oversized_draft_is_clipped_before_it_reaches_a_tool():
+    from src.utils import limits
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.session_state["feature_menu"] = "Paper Health Check"
+    at.session_state["draft"] = "word " * 100_000          # 500,000 characters
+    at.run()
+    assert not at.exception
+    assert len(at.text_area(key="hc_text").value) <= limits.MAX_TEXT_CHARS

@@ -24,6 +24,7 @@ from .tone_auditor import analyze_tone
 from .consistency_checker import analyze_consistency
 from .redundancy_finder import find_repetition
 from .keyword_extractor import extract_keywords
+from .limits import MAX_TEXT_CHARS, clip_text
 
 # Academic prose usually lands at Flesch-Kincaid grade 12-16.
 GRADE_LOW, GRADE_HIGH = 12, 16
@@ -193,9 +194,10 @@ def annotate_html(text, fixes):
 def run_health_check(text, paper_type="empirical"):
     """Run every offline analyzer on `text`.
 
-    Returns {overall, grade, note, dims, fixes, annotated, keywords, contributions, word_count, error}.
+    Returns {overall, grade, note, dims, fixes, annotated, keywords, contributions, word_count,
+    truncated, error}. Text beyond MAX_TEXT_CHARS is not analysed (truncated=True).
     """
-    text = (text or "").strip()
+    text, truncated = clip_text((text or "").strip(), MAX_TEXT_CHARS)
     if len(text.split()) < 50:
         return {"error": "Paste at least ~50 words so the checks have something to measure."}
 
@@ -218,7 +220,7 @@ def run_health_check(text, paper_type="empirical"):
             "annotated": annotate_html(text, fixes),
             "keywords": kw.get("keywords", []) if _ok(kw) else [],
             "contributions": kw.get("contributions", []) if _ok(kw) else [],
-            "word_count": len(text.split()), "error": None}
+            "word_count": len(text.split()), "truncated": truncated, "error": None}
 
 
 def report_markdown(res):

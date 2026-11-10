@@ -32,6 +32,7 @@ import math
 import re
 from concurrent.futures import ThreadPoolExecutor
 from .gemini_helper import generate_text, is_unavailable_response
+from .limits import MAX_PAPER_CHARS, UNTRUSTED_NOTE
 
 # --- RUBRIC (kept faithful to ResearchClawBench/evaluation/score.py) --------------
 RUBRIC = """You are a strict scientific peer reviewer evaluating a research paper or report against a specific quality criterion.
@@ -276,7 +277,9 @@ def _build_text_prompt(paper_text: str, item: dict, background: str, reference_t
 {keywords_str}
 
 ## Paper / Report Text
-{paper_text}
+{UNTRUSTED_NOTE}
+
+{paper_text[:MAX_PAPER_CHARS]}
 
 ## Task
 Rate how well the paper addresses the criterion. First determine if this criterion is Objective (Mode A) or Subjective (Mode B), then apply the corresponding rubric strictly.
@@ -300,6 +303,8 @@ def _build_image_prompt(paper_text: str, item: dict, background: str, reference_
 {keywords_str}
 
 ## Paper / Report Text
+{UNTRUSTED_NOTE}
+
 {paper_text[:12000]}
 
 ## Task
@@ -410,6 +415,9 @@ def score_paper(paper_text: str, checklist=None, reference_text: str = "",
     if skipped:
         warning = (f"{skipped} of {len(checklist)} criteria could not be scored (the AI backend was "
                    f"unavailable for them) and were excluded from the total.")
+    if len(paper_text) > MAX_PAPER_CHARS:
+        note = f"Only the first {MAX_PAPER_CHARS:,} characters of the paper were reviewed."
+        warning = f"{warning} {note}" if warning else note
 
     return {"items": items, "total_score": final_score, "total_weight": round(total_weight, 4),
             "mode": mode, "scored_items": len(plain_scores), "skipped_items": skipped,
@@ -437,7 +445,7 @@ def generate_checklist(paper_text: str, num_items: int = 7) -> dict:
         '{"content": "<the criterion, one specific testable sentence>", '
         '"keywords": ["<technical aspect to verify>", "..."], '
         '"weight": <number>, "type": "text"}\n\n'
-        f"Paper:\n\"\"\"{paper_text[:12000]}\"\"\""
+        f"{UNTRUSTED_NOTE}\n\nPaper:\n\"\"\"{paper_text[:12000]}\"\"\""
     )
     raw = generate_text(prompt)
     if is_unavailable_response(raw):

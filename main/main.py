@@ -10,6 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.utils.pdf_processor import extract_text_from_pdf, summarize_text
 from src.utils.text_analyzer import check_plagiarism, build_custom_detector
 from src.utils.health_check import run_health_check, report_markdown, locate_sentence
+from src.utils.limits import MAX_TEXT_CHARS, MAX_REFERENCE_FILES, clip_text, safe_filename
 from src.utils.content_generator import (
     generate_section_only, generate_quick_paper, get_available_paper_types,
     edit_section, generate_section_guide,
@@ -112,8 +113,8 @@ def suggest_paper_type(topic: str, key: str):
             pred, confidence = get_topic_predictor().predict(topic)
             conf_txt = f" ({confidence * 100:.0f}% confidence)" if confidence else ""
             st.info(f"Suggested paper type: **{pred}**{conf_txt}")
-        except Exception as e:
-            st.warning(f"Could not suggest a paper type: {e}")
+        except Exception:
+            st.warning("Could not suggest a paper type right now.")
 
 
 # ---- Tier 1 UX helpers -----------------------------------------------------
@@ -190,6 +191,12 @@ def read_uploaded_file(uploaded_file):
     """
     if uploaded_file is None:
         return None, "No file provided."
+
+    def clipped(text):
+        text, cut = clip_text(text)
+        if cut:
+            st.info(f"This file is long: only its first {MAX_TEXT_CHARS:,} characters are used.")
+        return text
     # Guard against oversized uploads OOM-killing the (memory-limited) free-tier
     # container before parsing. Streamlit also enforces server.maxUploadSize, but
     # this is a defensive second check in case that config isn't picked up.
@@ -211,20 +218,20 @@ def read_uploaded_file(uploaded_file):
             if not text or str(text).strip().lower().startswith("error"):
                 return None, ("Could not extract text from this PDF. If it is a scanned/image-only "
                               "PDF it has no selectable text — try a text-based PDF or paste the text.")
-            return text, None
+            return clipped(text), None
         # TXT (or anything else): decode robustly across common encodings.
         raw = uploaded_file.read()
         if isinstance(raw, str):
-            return (raw, None) if raw.strip() else (None, "The file appears to be empty.")
+            return (clipped(raw), None) if raw.strip() else (None, "The file appears to be empty.")
         for enc in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
             try:
                 text = raw.decode(enc)
-                return (text, None) if text.strip() else (None, "The file appears to be empty.")
+                return (clipped(text), None) if text.strip() else (None, "The file appears to be empty.")
             except UnicodeDecodeError:
                 continue
-        return raw.decode("utf-8", errors="replace"), None
-    except Exception as e:
-        return None, f"Could not read the file: {e}"
+        return clipped(raw.decode("utf-8", errors="replace")), None
+    except Exception:
+        return None, "Could not read the file. Try a text-based PDF or a plain .txt file."
 
 
 # ---- One draft, every tool --------------------------------------------------
@@ -233,15 +240,15 @@ def read_uploaded_file(uploaded_file):
 
 def _keep_draft(key: str):
     """on_change callback: the box the user just edited becomes the shared draft."""
-    st.session_state["draft"] = st.session_state.get(key, "")
+    st.session_state["draft"] = clip_text(st.session_state.get(key, ""))[0]
 
 
 def _draft_box(key: str):
     """Call right before rendering a whole-draft text_area: sync it to the shared draft.
     Returns the kwargs that make the box write edits back to the draft."""
     if st.session_state.get("draft"):
-        st.session_state[key] = st.session_state["draft"]
-    return {"key": key, "on_change": _keep_draft, "args": (key,)}
+        st.session_state["draft"] = st.session_state[key] = clip_text(st.session_state["draft"])[0]
+    return {"key": key, "on_change": _keep_draft, "args": (key,), "max_chars": MAX_TEXT_CHARS}
 
 
 def _clear_draft():
@@ -318,7 +325,7 @@ def _apply_rewrite(sentence: str, new: str):
     st.session_state.get("hc_rewrites", {}).clear()
 
 
-@st.cache_data(show_spinner=False, max_entries=50)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=50)
 def cached_health_check(text, paper_type):
     return run_health_check(text, paper_type)
 
@@ -343,22 +350,22 @@ def _send_to_paraphraser(sentence: str):
 
 
 # --- Cached wrappers for the slow / network-bound calls (Tier 4) -------------
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=200)
 def cached_search_references(query, rows):
     return search_references(query, rows=rows)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=50)
 def cached_verify_references(text):
     return verify_references(text)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=50)
 def cached_analyze_text(text, long_threshold):
     return analyze_text(text, long_sentence_words=long_threshold)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=50)
 def cached_check_plagiarism(text, threshold):
     return check_plagiarism(text, threshold)
 
@@ -497,6 +504,8 @@ elif choice == "Paper Health Check":
     if res and res.get("error"):
         st.warning(res["error"])
     elif res:
+        if res.get("truncated"):
+            st.info(f"This draft is long: only its first {MAX_TEXT_CHARS:,} characters were checked.")
         hist = st.session_state.get("hc_history", [])
         ring, side = st.columns([1, 2.4])
         with ring:
@@ -671,7 +680,7 @@ elif choice == "Content Generation":
                 st.download_button(
                     label="Download as Word Document",
                     data=docx_bytes,
-                    file_name=f"{paper['title'].replace(' ', '_')}.docx",
+                    file_name=f"{safe_filename(paper['title'])}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
             else:
@@ -751,7 +760,7 @@ elif choice == "Content Generation":
                 else:
                     st.warning("Please enter a topic and select a section.")
         else:  # Edit / improve existing
-            existing = st.text_area("Paste the section text to improve:", height=220, key="sec_existing")
+            existing = st.text_area("Paste the section text to improve:", height=220, key="sec_existing", max_chars=MAX_TEXT_CHARS)
             show_counter(existing)
             edit_instr = st.text_area(
                 "(Optional) how should it be improved? e.g. 'more formal', 'expand', 'fix grammar', 'tighten'",
@@ -815,7 +824,7 @@ elif choice == "Content Generation":
                 st.download_button(
                     label="Download Full Guide as TXT",
                     data=guide,
-                    file_name=f"{topic.replace(' ', '_')}_paper_guide.txt",
+                    file_name=f"{safe_filename(topic)}_paper_guide.txt",
                     mime="text/plain"
                 )
             else:
@@ -846,7 +855,7 @@ elif choice == "Paper Analysis":
         else:
             st.info("Please upload a file to analyze.")
     with tab2:
-        input_text = st.text_area("Paste text for analysis:", height=200, key="analysis_text")
+        input_text = st.text_area("Paste text for analysis:", height=200, key="analysis_text", max_chars=MAX_TEXT_CHARS)
         if st.button("Analyze & Suggest Content", key="analyze_text_btn"):
             if input_text:
                 summary = summarize_text(input_text)
@@ -994,7 +1003,9 @@ elif choice == "Plagiarism Detection":
         else:
             # Gather any user-supplied reference documents.
             custom_docs = []
-            for f in (ref_files or []):
+            if len(ref_files or []) > MAX_REFERENCE_FILES:
+                st.warning(f"Only the first {MAX_REFERENCE_FILES} reference documents are used.")
+            for f in (ref_files or [])[:MAX_REFERENCE_FILES]:
                 t, e = read_uploaded_file(f)
                 if e:
                     st.warning(f"{f.name}: {e}")
@@ -1065,7 +1076,7 @@ elif choice == "Paraphraser":
     st.header("Paraphraser / Rewriter")
     st.caption("Rewrite text to reduce plagiarism, improve clarity, or change tone. Requires an AI backend (Groq/Ollama).")
 
-    para_text = st.text_area("Enter text to rewrite:", height=200, key="para_text")
+    para_text = st.text_area("Enter text to rewrite:", height=200, key="para_text", max_chars=MAX_TEXT_CHARS)
     show_counter(para_text)
     mode = st.selectbox("Rewrite mode:", get_modes(), key="para_mode")
 
@@ -1574,7 +1585,7 @@ elif choice == "Verify References":
     st.header("Verify References")
     st.caption("Paste your reference list — each entry is checked against CrossRef to catch fabricated / "
                "AI-hallucinated citations. Requires internet; checks up to 20 references.")
-    ref_text = st.text_area("Paste your references (one per line):", height=240, key="verify_text")
+    ref_text = st.text_area("Paste your references (one per line):", height=240, key="verify_text", max_chars=MAX_TEXT_CHARS)
     if st.button("Verify references", key="verify_btn"):
         if ref_text and ref_text.strip():
             with st.spinner("Checking each reference against CrossRef…"):
@@ -1689,7 +1700,7 @@ elif choice == "AI Prompt Generator":
                "format, with zero em dashes, smart quotes, or AI-tell filler. Pick a framework, "
                "generate, then optionally refine. Needs an AI backend.")
 
-    idea = st.text_area("Describe your idea / what you want the AI to do:", height=140, key="pg_idea")
+    idea = st.text_area("Describe your idea / what you want the AI to do:", height=140, key="pg_idea", max_chars=MAX_TEXT_CHARS)
     show_counter(idea)
     pgc1, pgc2 = st.columns(2)
     with pgc1:
@@ -1765,7 +1776,7 @@ elif choice == "AI Peer Reviewer":
     show_counter(pr_paper)
 
     with st.expander("Optional: paste a reference paper (score against it instead of the general standard)"):
-        pr_ref = st.text_area("Reference paper text:", height=140, key="pr_ref")
+        pr_ref = st.text_area("Reference paper text:", height=140, key="pr_ref", max_chars=MAX_TEXT_CHARS)
 
     rub_choice = st.radio("Rubric:", ["Auto-generate from the paper", "Standard academic rubric"],
                           horizontal=True, key="pr_rubric_mode")

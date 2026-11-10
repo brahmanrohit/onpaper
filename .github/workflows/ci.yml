@@ -1,4 +1,5 @@
-# Tests every push, and keeps the Streamlit Community Cloud app awake.
+# Tests every push, audits dependencies for known vulnerabilities (every push and
+# weekly), and keeps the Streamlit Community Cloud app awake.
 #
 # Streamlit Cloud deploys `main` by itself and puts an app to sleep after ~12h
 # with no visitors. A plain HTTP ping doesn't count as a visit, so every 6h a real
@@ -13,9 +14,25 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: "23 */6 * * *"
+    - cron: "23 */6 * * *"   # keep the app awake
+    - cron: "41 3 * * 1"     # weekly dependency audit (Mondays)
+
+permissions:
+  contents: read             # no job here needs to write to the repo
 
 jobs:
+  # Fails if any dependency the app would install today has a known vulnerability,
+  # so a new advisory shows up as a red run (and an email) instead of going unnoticed.
+  audit:
+    if: github.event_name != 'schedule' || github.event.schedule == '41 3 * * 1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install -q pip-audit
+      - run: pip-audit -r requirements.txt
+
   test:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest

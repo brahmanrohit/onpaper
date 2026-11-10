@@ -7,9 +7,12 @@ redundancy. Distinct from corpus-based plagiarism — it compares a document to
 itself. Uses a single TF-IDF transform + cosine; no AI backend or network.
 """
 
+import numpy as np
 from nltk.tokenize import sent_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+from .limits import MAX_SENTENCES
 
 
 def find_repetition(text: str, threshold: float = 0.8, min_words: int = 8) -> dict:
@@ -22,6 +25,10 @@ def find_repetition(text: str, threshold: float = 0.8, min_words: int = 8) -> di
     kept = [(idx, s) for idx, s in enumerate(all_sentences) if len(s.split()) >= min_words]
     if len(kept) < 2:
         return {"error": "Need at least two substantial sentences to compare."}
+    # The comparison below is n x n in memory and time. Cap n so a huge paste
+    # cannot exhaust the server; the first MAX_SENTENCES sentences are compared.
+    truncated = len(kept) > MAX_SENTENCES
+    kept = kept[:MAX_SENTENCES]
 
     orig_idx = [idx for idx, _ in kept]
     sentences = [s for _, s in kept]
@@ -33,15 +40,12 @@ def find_repetition(text: str, threshold: float = 0.8, min_words: int = 8) -> di
     sims = cosine_similarity(matrix)
     n = len(sentences)
     pairs = []
-    for a in range(n):
-        for b in range(a + 1, n):
-            if abs(orig_idx[a] - orig_idx[b]) <= 1:  # truly adjacent in the document
-                continue
-            score = float(sims[a][b])
-            if score >= threshold:
-                pairs.append({"a": sentences[a], "b": sentences[b],
-                              "similarity": round(score, 2),
-                              "i": orig_idx[a] + 1, "j": orig_idx[b] + 1})
+    for a, b in zip(*np.where(np.triu(sims, k=1) >= threshold)):  # each pair once, a < b
+        if abs(orig_idx[a] - orig_idx[b]) <= 1:  # truly adjacent in the document
+            continue
+        pairs.append({"a": sentences[a], "b": sentences[b],
+                      "similarity": round(float(sims[a][b]), 2),
+                      "i": orig_idx[a] + 1, "j": orig_idx[b] + 1})
     pairs.sort(key=lambda p: p["similarity"], reverse=True)
 
     return {
@@ -49,5 +53,6 @@ def find_repetition(text: str, threshold: float = 0.8, min_words: int = 8) -> di
         "pairs": pairs[:25],
         "pair_count": len(pairs),
         "threshold": threshold,
+        "truncated": truncated,
         "error": None,
     }

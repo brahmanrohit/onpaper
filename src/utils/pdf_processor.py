@@ -1,24 +1,32 @@
-import PyPDF2
+from pypdf import PdfReader
 import nltk
 from nltk.tokenize import sent_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
 
+from .limits import MAX_PDF_PAGES, MAX_TEXT_CHARS
 from .nltk_setup import ensure_nltk_data
 
 ensure_nltk_data()
 
 def extract_text_from_pdf(pdf_file):
-    """Extracts text content from an uploaded PDF file."""
+    """Extract text from an uploaded PDF.
+
+    Uploads are untrusted, so parsing stops after MAX_PDF_PAGES pages or
+    MAX_TEXT_CHARS characters: a crafted or enormous PDF cannot tie up the server.
+    """
     try:
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
-        text = ""
-        for page in pdf_reader.pages:
+        parts, size = [], 0
+        for i, page in enumerate(PdfReader(pdf_file).pages):
+            if i >= MAX_PDF_PAGES or size >= MAX_TEXT_CHARS:
+                break
             page_text = page.extract_text()
             if page_text:
-                text += page_text + "\n"
-        return text.strip() if text else "Error: No extractable text found."
+                parts.append(page_text)
+                size += len(page_text) + 1
+        text = "\n".join(parts).strip()[:MAX_TEXT_CHARS]
+        return text if text else "Error: No extractable text found."
     except Exception as e:
         return f"Error extracting text: {str(e)}"
 

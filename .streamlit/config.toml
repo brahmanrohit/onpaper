@@ -2,10 +2,14 @@
 # (cloud runs from the repo root, so main/.streamlit/config.toml is ignored there).
 [server]
 headless = true
+maxMessageSize = 10         # MB per browser message (default 200): stops a giant paste early
 maxUploadSize = 10          # MB — caps uploads so a huge PDF can't OOM the free tier
 
 [browser]
 gatherUsageStats = false
+
+[client]
+showErrorDetails = "none"   # never show Python tracebacks or file paths to visitors
 
 [theme]
 # Warm paper + ink. Keep in sync between both config.toml files.

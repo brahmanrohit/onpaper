@@ -12,6 +12,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from .config import PLAGIARISM_MODEL_PATH, PLAGIARISM_VECTORIZER_PATH
+from .limits import MAX_SENTENCES
 
 # Ensure required NLTK data (punkt_tab/punkt/stopwords) is present.
 from .nltk_setup import ensure_nltk_data
@@ -111,6 +112,8 @@ class PlagiarismDetector:
             raw_sentences = [s.strip() for s in sent_tokenize(text) if len(s.strip()) > 10]
         except Exception:
             raw_sentences = [s.strip() for s in text.split('.') if len(s.strip()) > 10]
+        # Sentence matching builds an (input x corpus) matrix: cap the input side.
+        raw_sentences = raw_sentences[:MAX_SENTENCES]
         input_sentences = [self.preprocess_text(s) for s in raw_sentences]
 
         if not input_sentences:
