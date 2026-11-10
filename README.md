@@ -1,6 +1,6 @@
 # OnPaper — Research Paper Writing Assistant
 
-OnPaper is a **Streamlit** web application that helps users **generate, analyze, and improve academic research papers**. It combines Large Language Models (Google **Gemini** or a local **Ollama** server) with classic scikit-learn ML models for plagiarism detection and paper-type classification.
+OnPaper is a **Streamlit** web application that helps users **generate, analyze, and improve academic research papers**. It combines Large Language Models (**Groq** in the cloud or a local **Ollama** server) with classic scikit-learn ML models for plagiarism detection and paper-type classification.
 
 This is the **single source of truth** for the project. It documents the real, current layout, what every file does, how data flows, how to run it, and the known issues.
 
@@ -12,13 +12,14 @@ This is the **single source of truth** for the project. It documents the real, c
 3. [Project Structure (what every file does)](#project-structure)
 4. [How It Works (data flow)](#how-it-works)
 5. [Configuration](#configuration)
-6. [AI Backends (Gemini & Ollama)](#ai-backends)
+6. [AI Backends (Groq & Ollama)](#ai-backends)
 7. [Machine Learning Models](#machine-learning-models)
 8. [Research Paper Types](#research-paper-types)
 9. [Model Tuning Reference](#model-tuning-reference)
 10. [Security](#security)
-11. [Known Issues & Limitations](#known-issues--limitations)
-12. [Developer Notes](#developer-notes)
+11. [Knowledge Graph](#knowledge-graph)
+12. [Known Issues & Limitations](#known-issues--limitations)
+13. [Developer Notes](#developer-notes)
 
 ---
 
@@ -33,7 +34,7 @@ The app opens on a **Home** page; the sidebar groups every tool by stage — **C
 | **Paper Analysis** | Extract text from an uploaded PDF/TXT and produce a TF-IDF summary. | pypdf + scikit-learn |
 | **Paper Health Check** | One click runs every offline analyzer (readability, evidence, flow, tone, terminology, repetition, structure, abstract): a 0–100 report card, your draft with every problem sentence **highlighted in place**, and a ranked fix list where each item has a one-click action — **✨ Rewrite → Apply to draft** (re-scores automatically, with a progress trend) or **🔗 Find a source** (opens Reference Finder already searching). Export as .md/.docx. Try it instantly with the bundled sample draft. | Native (no key); rewrites use Groq/Ollama |
 | **One draft, every tool** | Paste or upload once — the draft follows you into every analysis tool, already filled in. | — |
-| **Grammar Check** | Detect & correct grammar/spelling/style with change tracking and a side-by-side diff. | Gemini (with regex fallback) |
+| **Grammar Check** | Detect & correct grammar/spelling/style with change tracking and a side-by-side diff. | Groq/Ollama (with regex fallback) |
 | **Plagiarism Detection** | Compare text against a reference corpus using TF-IDF + cosine similarity, at document and sentence level. | scikit-learn |
 | **Reference Finder** | Find **real** academic papers with DOIs via the free CrossRef API; format in APA/IEEE/MLA. | CrossRef (no key) |
 | **Paraphraser / Rewriter** | Rewrite text to reduce plagiarism, improve clarity, or change tone (7 modes). | Groq/Ollama |
@@ -104,12 +105,12 @@ onpaperfixed/
 │   ├── utils/                  # Core feature modules (imported by main.py)
 │   │   ├── config.py                 # Centralized paths, thresholds, paper types
 │   │   ├── limits.py                 # Input size limits + sanitisers for untrusted input (see Security)
-│   │   ├── gemini_helper.py          # ⭐ Central AI gateway: routes to Ollama/Gemini
+│   │   ├── gemini_helper.py          # ⭐ Central AI gateway: routes to Groq, then Ollama
 │   │   ├── ollama_helper.py          # Local Ollama client (auto-discovers server & model)
 │   │   ├── content_generator.py      # 10 paper-type templates; section-by-section generation
 │   │   ├── default_paper_generator.py# Richer generator → builds the Word .docx (+ images)
 │   │   ├── text_analyzer.py          # PlagiarismDetector (TF-IDF + cosine, batched)
-│   │   ├── grammar_checker.py        # Gemini JSON grammar correction + regex fallback
+│   │   ├── grammar_checker.py        # AI JSON grammar correction + regex fallback
 │   │   ├── citation_manager.py       # Thin CrossRef wrapper (kept for API compat; UI uses reference_finder)
 │   │   ├── health_check.py           # Paper Health Check: runs all offline analyzers, scores, ranks fixes
 │   │   ├── pdf_processor.py          # PDF text extraction + TF-IDF summarization
@@ -156,7 +157,7 @@ onpaperfixed/
 
 ### The runtime path (what actually executes when you use the app)
 ```
-run.py → main/main.py → src/utils/*  → (gemini_helper → ollama_helper / Gemini API)
+run.py → main/main.py → src/utils/*  → (gemini_helper → groq_helper / ollama_helper)
                                       → (text_analyzer, content_generator, … load pkls from src/ML/)
 ```
 Everything under `src/model_devlopment_file/`, `scripts/`, `tests/`, `main/deploy_plagiarism_model.py`, and the legacy `*.pkl` copies are **not** part of that runtime path.
@@ -181,7 +182,7 @@ a `.docx`/TXT download.
 > This batched design keeps a full-paper check well under a second. (An earlier version did a per-sentence-pair transform loop that took 10s+.)
 
 ### Grammar check
-`check_grammar_text()` → builds a JSON-output prompt → Gemini → parse JSON → structured
+`check_grammar_text()` → builds a JSON-output prompt → AI gateway → parse JSON → structured
 `{corrected_text, changes[], statistics}`. If the API is unavailable or returns no JSON,
 a **regex fallback** applies common contraction/spelling/punctuation fixes.
 
@@ -317,6 +318,33 @@ covered by `tests/test_security.py`.
 
 Not covered: there is no per-visitor rate limit (the AI provider's own limits apply), and the
 pickled models in `src/ML/` are trusted because they ship with the repo.
+
+---
+
+## Knowledge Graph
+
+The repo ships a knowledge graph of itself, built with [Graphify](https://github.com/Graphify-Labs/graphify):
+every file, function and class, plus the concepts in the docs, and how they connect.
+
+- **[graphify-out/GRAPH_REPORT.md](graphify-out/GRAPH_REPORT.md)** is the readable summary: the most-connected
+  nodes, the 55 clusters the code falls into, and questions the graph can answer.
+- **`graphify-out/graph.json`** is the graph itself: 1,063 nodes and 2,101 links. The 70 code files were
+  parsed locally; the 6 documentation files went through Graphify's language-model pass.
+
+What it shows at a glance: `generate_text()` is the hub every AI feature goes through (44 links). The next
+most-connected are `EnhancedMLTrainer` (24), `run_health_check()` (22) and `PlagiarismDetector` (20). There
+are no import cycles.
+
+```bash
+uv tool install graphifyy     # the official package name has a double y
+graphify query "how does the health check score a draft?"
+graphify path "score_paper()" "src_utils_gemini_helper_generate_text"
+graphify explain "PlagiarismDetector"
+graphify export html          # interactive graph at graphify-out/graph.html
+```
+
+The graph is a snapshot built on 10 Nov 2026. After changing code, refresh it with `graphify update .`
+(code only, no AI needed).
 
 ---
 
