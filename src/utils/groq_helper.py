@@ -7,7 +7,7 @@ generation calls. Uses `requests` (already a dependency); no SDK needed.
 
 Configure via .env:
     GROQ_API_KEY=gsk_...                      # from https://console.groq.com/keys
-    GROQ_MODEL=llama-3.3-70b-versatile        # optional, this is the default
+    GROQ_MODEL=openai/gpt-oss-120b            # optional; tried first, see DEFAULT_MODELS
     GROQ_BASE_URL=https://api.groq.com/openai/v1   # optional
     GROQ_MAX_TOKENS=4096                       # optional
 """
@@ -20,8 +20,14 @@ import requests
 from .limits import redact
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+# Tried in order. Groq retires models a few times a year (llama-3.3-70b-versatile, the
+# old default here, was shut down on 2026-08-16 and every AI feature began failing with
+# a 404). A retired model answers 404 and the next one is used, so one retirement cannot
+# take the app's AI down again. Set GROQ_MODEL to put your own choice first.
+# Current list: https://console.groq.com/docs/models
+DEFAULT_MODELS = ("openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b")
 DEFAULT_MAX_TOKENS = 4096
+_working_model = None  # the model that last answered, so later calls skip retired ones
 
 # Free-tier Groq enforces a tokens-per-minute (TPM) limit, and this app fires
 # many calls per paper (section-by-section). Retrying transient 429s/5xx with
@@ -47,9 +53,15 @@ def is_groq_available() -> bool:
     return bool(_get_api_key())
 
 
+def _candidate_models() -> list:
+    """Models to try, in order: the one known to work, the owner's GROQ_MODEL, then the defaults."""
+    chosen = os.getenv("GROQ_MODEL", "").strip()
+    return list(dict.fromkeys(m for m in (_working_model, chosen, *DEFAULT_MODELS) if m))
+
+
 def get_groq_model() -> str:
-    """The model id Groq will use (env override or sensible default)."""
-    return os.getenv("GROQ_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    """The model id the next Groq call will use first."""
+    return _candidate_models()[0]
 
 
 def generate_text_with_groq(prompt: str) -> str:
@@ -57,14 +69,27 @@ def generate_text_with_groq(prompt: str) -> str:
 
     Returns the generated text on success, or a string starting with "Error"
     on failure (so gemini_helper.is_unavailable_response() / 'auto' fallback
-    treats it correctly and surfaces the real cause).
+    treats it correctly and surfaces the real cause). A model Groq has retired
+    is skipped in favour of the next candidate.
     """
+    global _working_model
     api_key = _get_api_key()
     if not api_key:
         return "Error: GROQ_API_KEY not set. Add it to your .env file."
 
+    result = "Error: no Groq model is configured."
+    for model in _candidate_models():
+        result, model_gone = _ask(prompt, model, api_key)
+        if not model_gone:
+            if not result.startswith("Error"):
+                _working_model = model
+            return result
+    return result  # every candidate was retired: report the provider's last answer
+
+
+def _ask(prompt: str, model: str, api_key: str):
+    """One model, with retries. Returns (text or "Error..." string, True if Groq no longer has the model)."""
     base_url = os.getenv("GROQ_BASE_URL", DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
-    model = get_groq_model()
     try:
         max_tokens = int(os.getenv("GROQ_MAX_TOKENS", str(DEFAULT_MAX_TOKENS)))
     except ValueError:
@@ -99,19 +124,21 @@ def generate_text_with_groq(prompt: str) -> str:
             if attempt < MAX_RETRIES - 1:
                 time.sleep(min(2 ** attempt, MAX_RETRY_WAIT))
                 continue
-            return f"Error: {last_detail}"
+            return f"Error: {last_detail}", False
 
         if response.status_code == 200:
             try:
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
-                return content if content else "Error: Empty response from Groq"
+                return (content if content else "Error: Empty response from Groq"), False
             except (KeyError, IndexError, ValueError) as e:
-                return f"Error: unexpected Groq response format: {str(e)}"
+                return f"Error: unexpected Groq response format: {str(e)}", False
 
         # Non-200: capture the real API message (401 invalid key, 429 TPM, etc.)
+        code = ""
         try:
-            last_detail = redact(response.json().get("error", {}).get("message", ""))
+            error = response.json().get("error", {})
+            last_detail, code = redact(error.get("message", "")), error.get("code") or ""
         except Exception:
             last_detail = redact(response.text[:300])
 
@@ -122,9 +149,10 @@ def generate_text_with_groq(prompt: str) -> str:
                 time.sleep(_retry_wait(response, last_detail, attempt))
                 continue
 
-        return f"Error: Groq API returned {response.status_code}: {last_detail}"
+        model_gone = response.status_code == 404 or code in ("model_not_found", "model_decommissioned")
+        return f"Error: Groq API returned {response.status_code}: {last_detail}", model_gone
 
-    return f"Error: Groq API failed after {MAX_RETRIES} attempts: {last_detail}"
+    return f"Error: Groq API failed after {MAX_RETRIES} attempts: {last_detail}", False
 
 
 def _retry_wait(response, detail: str, attempt: int) -> float:

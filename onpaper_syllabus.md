@@ -254,7 +254,7 @@ Each module: **what to learn** + **where it lives in this repo**.
 ### Module 2 — LLM / Generative-AI integration ⭐ (the heart)
 - **Multi-backend gateway with auto-fallback** — the most important module
 - Backends:
-  - **Groq** (default): `requests` → OpenAI-compatible REST; `llama-3.3-70b-versatile`; rate limits 401/429
+  - **Groq** (default): `requests` → OpenAI-compatible REST; `openai/gpt-oss-120b` with automatic fallback when a model is retired; rate limits 401/429
   - **Gemini**: unified `google-genai` SDK; `gemini-flash-latest`; guarded import
   - **Ollama** (local): auto-discovers server + model; `http://localhost:11434`
 - Prompt engineering: section templates, JSON-output prompts, grounded prompts

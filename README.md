@@ -206,7 +206,7 @@ AI_BACKEND=auto
 
 # Groq (primary) — free key at https://console.groq.com/keys
 GROQ_API_KEY=gsk_your_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b      # optional; tried first, with automatic fallback
 
 # Ollama (fallback; local & unlimited; auto-detected if omitted)
 OLLAMA_BASE_URL=http://localhost:11434
@@ -226,9 +226,10 @@ generation feature. *(The module keeps its legacy `gemini_helper` filename for i
 compatibility, but Gemini has been removed.)*
 
 - **`auto`** *(default)*: try **Groq** first (fast cloud), then fall back to a local **Ollama** server.
-- **`groq`**: cloud, OpenAI-compatible, **fast + generous free tier**, runs open-source Llama models.
+- **`groq`**: cloud, OpenAI-compatible, **fast + generous free tier**, runs open-weight models.
   Get a free key at https://console.groq.com/keys (starts with `gsk_`); set `GROQ_API_KEY` and
-  optionally `GROQ_MODEL` (default `llama-3.3-70b-versatile`). Implemented in
+  optionally `GROQ_MODEL` (default `openai/gpt-oss-120b`). Groq retires models a few times a year, so if
+  the chosen model is gone the app moves to the next one in `DEFAULT_MODELS` by itself. Implemented in
   [groq_helper.py](src/utils/groq_helper.py) using `requests` — no extra dependency.
 - **`ollama`**: fully **local, open-source, unlimited & offline**. Install from https://ollama.com,
   run `ollama pull llama3.2`; `ollama_helper.py` auto-discovers the server URL and picks a
